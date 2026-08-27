@@ -374,7 +374,7 @@ echo "No CGNAT detected: router WAN IP matches public IP ($PUBLIC_IP). Port forw
 | A4 | Prism Launcher can hand-install RLCraft 2.9.3 as cleanly as the CurseForge app (only the CurseForge app path was directly verified this session) | Open Questions | The phase's client-install README (success criterion 1) might need to recommend only the CurseForge app path, or needs a second verification pass for Prism |
 | A5 | `itzg/rcon-cli`'s current release still publishes a `linux_arm64` asset under a filename matching the `.goreleaser.yml` template at execution time | Standard Stack, Pitfall 2 | Low risk — even if the exact filename shifts, the releases page is easy to check manually during `install.sh` authoring |
 
-## Open Questions
+## Open Questions (RESOLVED — see 01-01 Task 2 fallback paths and 01-04 Task 3 CLIENT-SETUP.md)
 
 1. **Does RLCraft's CurseForge project currently allow third-party API distribution?**
    - What we know: The toggle exists project-wide and defaults to "on" for existing projects; RLCraft's specific setting was not directly observable without an API key.
