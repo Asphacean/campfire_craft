@@ -1,0 +1,15 @@
+[Unit]
+Description=Load the scoped rlcraft RCON-drop nftables table at boot (D-08)
+# Deliberately NOT nftables.service: Debian's default /etc/nftables.conf does
+# `flush ruleset`, which would wipe Docker's iptables-nft-managed rules on
+# this host (see scripts/harden-rcon.sh header, 01-02-SUMMARY.md Deviations).
+# This unit loads only our own dedicated table, nothing else on the host.
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/rlcraft-rcon.nft
+
+[Install]
+WantedBy=multi-user.target

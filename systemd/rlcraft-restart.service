@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily graceful restart of rlcraft.service (D-11)
+After=rlcraft.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart rlcraft

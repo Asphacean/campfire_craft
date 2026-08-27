@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily 05:00 graceful restart timer for rlcraft.service (D-11)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
