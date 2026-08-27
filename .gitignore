@@ -20,3 +20,13 @@ server/ops.json
 
 # server/config/ is intentionally NOT ignored — small text, operator-edited,
 # and Phase 3's client manifest generator reads it as source of truth.
+
+# RLCraft server pack noise (regenerable from pinned zip)
+server/.mixin.out/
+server/*.txt
+server/*.log
+server/llibrary/
+server/resourcepacks/
+server/resources/
+server/scripts/
+server/structures/
