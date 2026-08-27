@@ -42,13 +42,15 @@ else
   chmod 600 "$ENV_FILE"
 fi
 
-# helper: persist KEY=VALUE into server.env (create the key if absent)
+# helper: persist KEY=VALUE into server.env (create the key if absent).
+# Quotes the value — an unquoted path with spaces would break `. ./server.env`.
 set_env_var() {
   local key="$1" val="$2"
+  local escaped="${val//\"/\\\"}"
   if grep -q "^${key}=" "$ENV_FILE"; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    sed -i "s|^${key}=.*|${key}=\"${escaped}\"|" "$ENV_FILE"
   else
-    echo "${key}=${val}" >>"$ENV_FILE"
+    printf '%s="%s"\n' "$key" "$escaped" >>"$ENV_FILE"
   fi
 }
 
