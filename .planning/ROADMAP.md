@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. With 3 players online simultaneously, measured TPS stays at or above 15
   4. A scheduled backup has been restored into a running server, and the restored world loads with player progress intact
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -43,7 +43,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Tracer: pack installed, running under systemd on Java 8, a real client joins; crash/boot/daily-restart resilience, RCON off-box unreachable (SRV-01, SRV-02)
+- [x] 01-02-PLAN.md — Tracer: pack installed, running under systemd on Java 8, a real client joins; crash/boot/daily-restart resilience, RCON off-box unreachable (SRV-01, SRV-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Playable Server on the Pi | 1/4 | In Progress|  |
+| 1. Playable Server on the Pi | 2/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 0/TBD | Not started | - |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
