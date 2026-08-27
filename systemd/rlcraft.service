@@ -9,7 +9,15 @@ User=asphacean
 WorkingDirectory=/home/asphacean/rlcraft/server
 EnvironmentFile=/home/asphacean/rlcraft/server.env
 ExecStart=/home/asphacean/rlcraft/scripts/start-server.sh
-ExecStop=/usr/local/bin/rcon-cli --host ${RCON_HOST} --port ${RCON_PORT} --password ${RCON_PASSWORD} stop
+# Leading `-` (systemd "ignore this executable's exit code" syntax): if RCON
+# happens to be unreachable at stop time (e.g. the server is still mid-boot
+# from a just-completed restart), the graceful stop attempt itself must not
+# turn a `systemctl stop` into a unit-level "failed" result — KillMode=mixed
+# below still delivers SIGTERM to the JVM either way. Found live during
+# 01-03 Task 2 restore testing: an unprefixed ExecStop marked the unit
+# "failed" on a mid-boot stop attempt (Result: exit-code) instead of a clean
+# stop. See 01-03-SUMMARY.md Deviations.
+ExecStop=-/usr/local/bin/rcon-cli --host ${RCON_HOST} --port ${RCON_PORT} --password ${RCON_PASSWORD} stop
 KillMode=mixed
 TimeoutStopSec=90
 Restart=on-failure
