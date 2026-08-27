@@ -74,13 +74,37 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by roadmapper) | | |
+| SRV-01 | Phase 1 | Pending |
+| SRV-02 | Phase 1 | Pending |
+| SRV-03 | Phase 1 | Pending |
+| SRV-04 | Phase 1 | Pending |
+| SRV-05 | Phase 1 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 4 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| DIST-01 | Phase 3 | Pending |
+| DIST-02 | Phase 3 | Pending |
+| DIST-03 | Phase 3 | Pending |
+| DIST-04 | Phase 3 | Pending |
+| LNCH-01 | Phase 4 | Pending |
+| LNCH-02 | Phase 4 | Pending |
+| LNCH-03 | Phase 4 | Pending |
+| LNCH-04 | Phase 4 | Pending |
+| LNCH-05 | Phase 4 | Pending |
+| LNCH-06 | Phase 4 | Pending |
+| LNCH-07 | Phase 4 | Pending |
+| LNCH-08 | Phase 4 | Pending |
+| REL-01 | Phase 5 | Pending |
+| REL-02 | Phase 5 | Pending |
+| REL-03 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-27*
-*Last updated: 2026-08-27 after initial definition*
+*Last updated: 2026-08-27 after roadmap creation (traceability filled)*
