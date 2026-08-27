@@ -1,0 +1,48 @@
+#Minecraft server properties — rendered into server/server.properties by scripts/install.sh (envsubst).
+#Base values below are the RLCraft Server Pack 2.9.3's own bundled server.properties and its
+#"FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt" stability notes (enable-command-block,
+#allow-flight, max-tick-time=-1) — everything NOT in this file's substituted keys is a pack default,
+#unchanged. Substituted keys are documented in 01-02-PLAN.md's Task 1 action (D-12, D-09, D-08).
+spawn-protection=16
+max-tick-time=-1
+generator-settings=
+force-gamemode=false
+allow-nether=true
+gamemode=0
+broadcast-console-to-ops=true
+enable-query=false
+player-idle-timeout=0
+difficulty=3
+spawn-monsters=true
+op-permission-level=4
+pvp=true
+snooper-enabled=false
+level-type=DEFAULT
+hardcore=false
+enable-command-block=true
+max-players=${MAX_PLAYERS}
+network-compression-threshold=256
+resource-pack-sha1=
+max-world-size=29999984
+server-port=25565
+texture-pack=
+server-ip=
+spawn-npcs=true
+allow-flight=true
+level-name=world
+view-distance=${VIEW_DISTANCE}
+hellworld=true
+resource-pack=
+spawn-animals=true
+white-list=${WHITELIST_FLAG}
+enforce-whitelist=${ENFORCE_WHITELIST_FLAG}
+generate-structures=true
+online-mode=false
+max-build-height=256
+level-seed=
+prevent-proxy-connections=false
+use-native-transport=true
+enable-rcon=true
+rcon.port=25575
+rcon.password=${RCON_PASSWORD}
+motd=${SERVER_NAME}

@@ -1,0 +1,20 @@
+[Unit]
+Description=RLCraft dedicated server (Forge 1.12.2 on Temurin 8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=asphacean
+WorkingDirectory=/home/asphacean/rlcraft/server
+EnvironmentFile=/home/asphacean/rlcraft/server.env
+ExecStart=/home/asphacean/rlcraft/scripts/start-server.sh
+ExecStop=/usr/local/bin/rcon-cli --host ${RCON_HOST} --port ${RCON_PORT} --password ${RCON_PASSWORD} stop
+KillMode=mixed
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=15
+SuccessExitStatus=0 143
+
+[Install]
+WantedBy=multi-user.target
