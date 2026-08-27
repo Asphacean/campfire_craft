@@ -30,7 +30,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The server is back online by itself after a Pi reboot and after a hard kill, with no operator action
   3. With 3 players online simultaneously, measured TPS stays at or above 15
   4. A scheduled backup has been restored into a running server, and the restored world loads with player progress intact
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Preflight: Temurin 8 + ops tooling, pack acquired and checksum-pinned, CGNAT verdict, operator facts (SRV-01, SRV-04)
+- [ ] 01-02-PLAN.md — Tracer: pack installed, running under systemd on Java 8, a real client joins; crash/boot/daily-restart resilience, RCON off-box unreachable (SRV-01, SRV-02)
+- [ ] 01-03-PLAN.md — Six-hourly rotated world backups and a restore actually performed into the running server (SRV-03)
+- [ ] 01-04-PLAN.md — Reachable by domain from outside, DNS following the public IP, TPS measured under 3-player load, client setup doc (SRV-04, SRV-05)
 
 ### Phase 2: Accounts & Enforced Auth
 **Goal**: Only a registered nick presenting a valid token can play; anyone with a vanilla client is turned away
@@ -90,7 +96,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Playable Server on the Pi | 0/TBD | Not started | - |
+| 1. Playable Server on the Pi | 0/4 | Planned | - |
 | 2. Accounts & Enforced Auth | 0/TBD | Not started | - |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
