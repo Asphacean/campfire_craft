@@ -1,0 +1,22 @@
+# Secrets and generated env
+server.env
+
+# Downloaded pack archives (verified via server.env PACK_SHA256, not tracked)
+downloads/
+
+# Generated server runtime content (reproduced by install.sh from the pinned pack)
+server/world/
+server/logs/
+server/crash-reports/
+server/libraries/
+server/mods/
+server/server.properties
+server/eula.txt
+server/*.jar
+server/whitelist.json
+server/usercache.json
+server/banned-*.json
+server/ops.json
+
+# server/config/ is intentionally NOT ignored — small text, operator-edited,
+# and Phase 3's client manifest generator reads it as source of truth.
