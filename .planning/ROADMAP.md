@@ -34,12 +34,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. With 3 players online simultaneously, measured TPS stays at or above 15
   4. A scheduled backup has been restored into a running server, and the restored world loads with player progress intact
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Preflight: Temurin 8 + ops tooling, pack acquired and checksum-pinned, CGNAT verdict, operator facts (SRV-01, SRV-04)
+- [x] 01-01-PLAN.md — Preflight: Temurin 8 + ops tooling, pack acquired and checksum-pinned, CGNAT verdict, operator facts (SRV-01, SRV-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Playable Server on the Pi | 0/4 | Planned | - |
+| 1. Playable Server on the Pi | 1/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 0/TBD | Not started | - |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
