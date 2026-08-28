@@ -31,9 +31,19 @@ is_cgnat_range() {
 set_env_var() {
   local key="$1" val="$2"
   local escaped="${val//\"/\\\"}"
-  if [ -f "$ENV_FILE" ] && grep -q "^${key}=" "$ENV_FILE"; then
+  # WR-08: this script's own header says "run before anything else in the
+  # phase" — if an operator does that literally and runs this before
+  # preflight.sh (which is what creates server.env), both branches below
+  # used to require $ENV_FILE to already exist and silently no-op, losing
+  # the CGNAT verdict with no warning at all while still printing a
+  # seemingly-successful "CGNAT: $VERDICT" line.
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "WARNING: $ENV_FILE does not exist — CGNAT verdict not persisted, run preflight.sh first" >&2
+    return
+  fi
+  if grep -q "^${key}=" "$ENV_FILE"; then
     sed -i "s|^${key}=.*|${key}=\"${escaped}\"|" "$ENV_FILE"
-  elif [ -f "$ENV_FILE" ]; then
+  else
     printf '%s="%s"\n' "$key" "$escaped" >>"$ENV_FILE"
   fi
 }
