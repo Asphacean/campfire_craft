@@ -188,15 +188,20 @@ pub async fn login(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     body: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    // Only *failed* attempts count against this limiter (checked below,
-    // after the outcome is known) — but a peer already at the limit is
-    // refused up front before spending an argon2 verification on it.
-    if !state.login_limiter.would_allow(peer.ip()) {
-        return Err(ApiError::RateLimited);
-    }
-
     let Json(req) = body?;
     let nick_lower = req.nick.to_lowercase();
+
+    // WR-01: reserve the failure-limiter slot atomically, in the same
+    // single-critical-section `check()` `/register` uses, right before the
+    // password check — refunded below on success. A separate peek
+    // (would_allow) + record-after-the-fact (record_failure) split left a
+    // check-then-record race: concurrent failed logins could all peek
+    // "under limit" before any of them recorded. Reserving up front closes
+    // that race; refunding on success is what still keeps a successful
+    // login from counting against it.
+    if !state.login_limiter.check(peer.ip()) {
+        return Err(ApiError::RateLimited);
+    }
 
     let user = state
         .db
@@ -216,10 +221,10 @@ pub async fn login(
     };
 
     if !ok {
-        state.login_limiter.record_failure(peer.ip());
         return Err(ApiError::InvalidCredentials);
     }
     let user = user.expect("ok implies user was found");
+    state.login_limiter.refund(peer.ip());
 
     let token = auth::generate_token();
     let token_hash = auth::hash_secret(&token).map_err(|_| ApiError::Internal)?;

@@ -42,25 +42,18 @@ impl RateLimiter {
         }
     }
 
-    /// Peek whether `ip` is currently under the limit, without recording an
-    /// attempt. Used by `/login`, which only counts *failures* (recorded
-    /// separately via [`Self::record_failure`]) — a successful login must
-    /// never be throttled by prior unrelated failures, and checking must
-    /// not itself consume quota.
-    pub fn would_allow(&self, ip: IpAddr) -> bool {
-        let now = Instant::now();
+    /// Refund the most recently reserved hit for `ip` (WR-01). `/login`
+    /// calls [`Self::check`] to reserve a slot *before* the password check
+    /// (the same single-critical-section reserve `/register` uses), then
+    /// calls this on success so a successful login never counts against
+    /// the limiter — without reopening the check-then-record race a
+    /// separate peek/record split had. Which concurrent caller's own
+    /// timestamp gets popped is unspecified under a race, but that's fine:
+    /// the aggregate count (pushes minus refunds) stays correct either way.
+    pub fn refund(&self, ip: IpAddr) {
         let mut hits = self.hits.lock().expect("ratelimit mutex poisoned");
-        let entry = hits.entry(ip).or_default();
-        entry.retain(|t| now.duration_since(*t) < self.window);
-        entry.len() < self.limit
-    }
-
-    /// Record a failed attempt for `ip` (pruning stale entries first).
-    pub fn record_failure(&self, ip: IpAddr) {
-        let now = Instant::now();
-        let mut hits = self.hits.lock().expect("ratelimit mutex poisoned");
-        let entry = hits.entry(ip).or_default();
-        entry.retain(|t| now.duration_since(*t) < self.window);
-        entry.push(now);
+        if let Some(entry) = hits.get_mut(&ip) {
+            entry.pop();
+        }
     }
 }
