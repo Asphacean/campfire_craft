@@ -125,8 +125,25 @@ Plans:
   4. Download and launch show the current step and file/byte progress instead of an unexplained wait
   5. Wrong password, unreachable server, failed Java download and full disk each show a plain-language message naming the log file; server status and launcher self-update work on startup
 
-**Plans**: TBD
+**Plans**: 4 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Tracer: rustup/Tauri toolchain and the Node-free launcher workspace, refresh tokens in the auth service plus the two new Caddy routes, and a real form that logs in against the live server and shows its status (AUTH-03, LNCH-01, LNCH-07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Manifest sync ported from the Phase 3 reference implementation, and a checksum-verified Java 8 the launcher owns for all three shipped platforms (LNCH-02, LNCH-03, LNCH-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-03-PLAN.md — Mojang's own files SHA-1 verified, Forge installed headlessly via the profile stub, and a complete launch command with the token handoff and a seeded server list (LNCH-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-04-PLAN.md — Play wired end to end over a channel with plain-English errors, the RAM slider, self-update on the file server, the RLCraft skin, and the operator QA matrix (AUTH-03, LNCH-01, LNCH-05, LNCH-06, LNCH-08)
 
 ### Phase 5: Release to Friends
 
@@ -152,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
-| 4. Launcher | 0/TBD | Not started | - |
+| 4. Launcher | 0/4 | Planned | - |
 | 5. Release to Friends | 0/TBD | Not started | - |
 
 ## Requirement Coverage
