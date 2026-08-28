@@ -25,6 +25,13 @@ ProtectSystem=full
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_INET AF_UNIX
 MemoryDenyWriteExecute=yes
+# WR-03: every file this process creates (the accounts db and its
+# -wal/-shm siblings) is born at mode 600 from the instant of creation
+# rather than briefly existing at the default 644 before db.rs's own
+# post-creation chmod runs. db.rs also sets this in-process (for
+# `login`/`reset`/devserver runs outside this unit) — this and that are
+# both defense in depth, neither is the sole enforcement point.
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

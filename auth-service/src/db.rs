@@ -51,6 +51,26 @@ impl Db {
     /// Open (creating if absent) the accounts database at `path` and ensure
     /// the schema exists.
     pub fn open(path: &str) -> rusqlite::Result<Self> {
+        // WR-03: set a restrictive umask before any file this process
+        // creates comes into existence, closing the window where the main
+        // db file (and its -wal/-shm siblings, created moments later by
+        // the CREATE TABLE statements below) could briefly exist at the
+        // ambient umask (644 under systemd's own default) before the
+        // chmod loop further down runs. Process-wide and set once at
+        // startup, so nothing else in this single-purpose binary races it.
+        // The unit's own `UMask=0077` covers the `serve` case; this covers
+        // `campfire-auth login`/`reset` and any devserver run outside
+        // systemd too — the chmod loop below stays as defense in depth on
+        // top of both.
+        #[cfg(unix)]
+        unsafe extern "C" {
+            fn umask(mask: u32) -> u32;
+        }
+        #[cfg(unix)]
+        unsafe {
+            umask(0o077);
+        }
+
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "busy_timeout", 5000)?;
