@@ -57,3 +57,28 @@ mods-src/campfire-auth/run/
 # Throwaway devserver (02-02 Task 2) — disposable, gitignored, safe to delete.
 devserver/
 __pycache__/
+
+# ca/ (Phase 3): the root CA private key. Never committed — anyone holding
+# this can mint a certificate every Phase 4 launcher will trust.
+ca/campfire-ca-key.pem
+# ca/ (Phase 3): the leaf private key, named after DOMAIN (e.g.
+# mc.campfire.pub-key.pem). Never committed — Caddy needs it on disk, git
+# never does.
+ca/*-key.pem
+# ca/ (Phase 3): the leaf certificate, named after DOMAIN. Not committed —
+# regenerable from the CA at any time via scripts/renew-cert.sh; only the CA
+# public cert (ca/campfire-ca.pem, tracked below) needs to be portable.
+ca/*-cert.pem
+# ca/ (Phase 3): OpenSSL's serial-number bookkeeping file, written by
+# -CAcreateserial. No secret and no useful history — regenerated every run.
+ca/*.srl
+
+# pack/ (Phase 3): gitignored staging tree written by scripts/publish-pack.sh
+# (plan 03-02) — hundreds of megabytes, fully reproducible from the manifest
+# sources, never meant to be tracked.
+pack/
+
+# A stray manually-downloaded Caddy .deb from an earlier attempt at this repo
+# root — not used by this project (the official apt repo is used instead via
+# scripts/install-caddy.sh). Left on disk, not tracked.
+/caddy_*.deb

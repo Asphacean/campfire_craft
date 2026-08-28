@@ -1,0 +1,80 @@
+# caddy/Caddyfile — the whole public HTTPS surface (D-01..D-05).
+#
+# admin off: no admin API socket exists at all — config changes require
+# `sudo systemctl restart caddy` (via scripts/install-caddy.sh), not a live
+# reload. auto_https off: this host must never attempt an ACME challenge —
+# TLS is an explicit own-CA leaf (D-02), named below by absolute path.
+{
+	admin off
+	auto_https off
+}
+
+mc.campfire.pub:8444 {
+	tls /home/asphacean/rlcraft/ca/mc.campfire.pub-cert.pem /home/asphacean/rlcraft/ca/mc.campfire.pub-key.pem
+
+	encode zstd gzip
+
+	# Everything below is wrapped in `route` to force literal top-to-bottom
+	# execution — without it, Caddy silently reorders bare directives
+	# (respond, handle, handle_path, ...) by its own fixed internal priority,
+	# which would let handle_path's file_server claim a PUT to /pack/* before
+	# the write guard below ever runs (confirmed live: without `route`, PUT
+	# resolved through file_server to a bare 404 instead of the intended 405).
+	route {
+		# Write guard (T-03-01-06): the static surface (manifest + pack tree)
+		# answers reads and refuses everything else. This runs before any
+		# handler below, rather than relying on what file_server happens to do
+		# with an unhandled method.
+		@write_guard {
+			not method GET HEAD
+			path /manifest.json /pack/*
+		}
+		respond @write_guard 405
+
+		# Published API (D-04). Only these three EXACT paths are routed —
+		# there is no wildcard under /api. The token-validation endpoint
+		# (/validate on 127.0.0.1:8081) is DELIBERATELY ABSENT here: it is
+		# unauthenticated beyond the token itself and its only legitimate
+		# caller is the auth-gate mod over loopback (auth-service/README.md).
+		# Adding a prefix wildcard under /api would republish it (T-03-01-01).
+		handle /api/register {
+			uri strip_prefix /api
+			reverse_proxy 127.0.0.1:8081
+		}
+		handle /api/login {
+			uri strip_prefix /api
+			reverse_proxy 127.0.0.1:8081
+		}
+		handle /status {
+			reverse_proxy 127.0.0.1:8081
+		}
+
+		# Pack file server (D-01). No `browse` directive here, ever —
+		# file_server disables directory listing by default; the only
+		# "control" this needs is the discipline of never adding one
+		# (T-03-01-05). Dotfiles are hidden explicitly.
+		handle /manifest.json {
+			root * /home/asphacean/rlcraft/pack
+			file_server {
+				hide .*
+			}
+		}
+		# handle_path (not handle) strips the matched /pack prefix before
+		# file_server resolves the path — a files[].url value of "mods/x.jar"
+		# published at /pack/mods/x.jar must resolve to pack/mods/x.jar under
+		# PACK_DIR, not pack/pack/mods/x.jar.
+		handle_path /pack/* {
+			root * /home/asphacean/rlcraft/pack
+			file_server {
+				hide .*
+			}
+		}
+
+		# Terminal handler: every unrouted path — including the token-
+		# validation path — gets a deterministic 404 instead of Caddy's
+		# default response.
+		handle {
+			respond 404
+		}
+	}
+}
