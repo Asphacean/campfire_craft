@@ -67,7 +67,7 @@ Plans:
   4. A vanilla Minecraft client with no token, connecting as a registered nick, is kicked with a clear message before it can move or interact
   5. Inspecting the account database shows only argon2/bcrypt hashes — no plaintext passwords anywhere
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -76,7 +76,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Auth-gate Forge mod built on the Pi, and the tokenless join proven refused on a throwaway server (AUTH-04, AUTH-05)
+- [x] 02-02-PLAN.md — Auth-gate Forge mod built on the Pi, and the tokenless join proven refused on a throwaway server (AUTH-04, AUTH-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -137,7 +137,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
-| 2. Accounts & Enforced Auth | 1/3 | In Progress|  |
+| 2. Accounts & Enforced Auth | 2/3 | In Progress|  |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
 | 5. Release to Friends | 0/TBD | Not started | - |
