@@ -115,9 +115,32 @@ shows up as a red disconnect screen listing which mods differ — this
 almost always means you installed the wrong RLCraft version. Re-check step
 2.
 
+## 7. The file server (for the curious, not a download page)
+
+As of Phase 3, the server also publishes the exact modpack it runs over
+HTTPS, at `https://mc.campfire.pub:8444/manifest.json` — a listing of every
+managed mod/config file with its hash, kept in sync every time the operator
+publishes a change. **This is not a manual download page.** Visiting it in a
+browser will show a certificate warning first — that's expected, the
+certificate is issued by our own private CA, which no browser trusts by
+default — and tapping through it just shows a wall of JSON, not a
+zip you can download and drop into CurseForge.
+
+This file server exists for Phase 4's launcher, which pins that same
+private CA and reads the JSON automatically to know exactly which files to
+fetch. Until the launcher ships, the CurseForge-app route in steps 1–5
+above remains the supported way to get the pack onto your machine.
+
 ## Before Phase 4 ships
 
 Everything above — the CurseForge app, the manual version pin, the manual
-RAM slider, typing the server address by hand — goes away once Phase 4's
-launcher exists. Don't build muscle memory around this; it's a bridge, not
-the final experience.
+RAM slider, typing the server address by hand, and the manual token you
+paste in before every join — goes away once Phase 4's launcher exists.
+Don't build muscle memory around this; it's a bridge, not the final
+experience.
+
+As of the end of Phase 3: the HTTPS file server, the manifest, and the
+status endpoint the launcher will use are all live and reachable from the
+internet (`docs/DIST-OPS.md`'s "Phase 4 integration contract" has the full
+detail a launcher implementer needs). What's still missing is the launcher
+itself — nothing about how you join changes until it ships.

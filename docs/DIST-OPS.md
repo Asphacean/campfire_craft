@@ -223,6 +223,159 @@ Minecraft client jar, its libraries, and its assets are never served from
 this host — those come from Mojang via the launcher, only mods/configs/
 resource packs are self-hosted here.
 
+## Phase 4 integration contract
+
+The single document Phase 4's planner and executor read instead of
+re-deriving the HTTPS surface. Router forward (TCP 8444 → the Pi) is in
+place as of 2026-08-28; the router does NAT hairpin (confirmed both from the
+Pi itself and from independent external vantage points — see "Router
+forward result" below).
+
+### Base URL
+
+`https://mc.campfire.pub:8444`. The port is **8444, not 443**, because :443
+already belongs to sing-box and :80/:8443 already belong to the pbwiki
+containers on this same host (D-14) — neither is ever touched by this
+project, so the HTTPS front for the modpack lives on its own dedicated port
+for the life of this host.
+
+### The full route table
+
+`auth-service/README.md`'s "Public route table" section is the authoritative
+copy for the API half; this table restates the complete published surface
+so Phase 4 never has to open a second document mid-implementation.
+
+| Public route | Method | Reaches | Returns |
+|---|---|---|---|
+| `/manifest.json` | GET, HEAD | `pack/manifest.json` via Caddy's `file_server` | The pack contract (schema below) |
+| `/pack/<url>` | GET, HEAD | `pack/<url>` via Caddy's `file_server` | A managed file; `<url>` is a `files[].url` value verbatim |
+| `/api/register` | POST | `campfire-auth` `/register` over loopback (127.0.0.1:8081) | 201, or 400/409/429 with a stable `{"error":"<code>"}` |
+| `/api/login` | POST | `campfire-auth` `/login` over loopback | `{"token","expires"}`, or 400/401/429 |
+| `/status` | GET | `campfire-auth` `/status` over loopback | `{"online","players","max","motd"}`; offline is HTTP 200 with `online:false`, never a 5xx |
+| anything else | any | — | 404 from Caddy's terminal handler |
+| non-GET/HEAD on `/manifest.json` or `/pack/*` | — | — | 405 |
+
+**`/api/validate` has no public route and must never be given one.** It is
+unauthenticated beyond the token itself and deliberately never rate
+limited, because it is the join path — its only legitimate caller is the
+auth-gate Forge mod over loopback on this same host. There is no `/api/*`
+wildcard in `caddy/Caddyfile`; adding one would republish it. Phase 4's
+launcher never calls this endpoint directly, under any circumstance.
+
+### The manifest schema
+
+```json
+{
+  "pack_version": "2026-08-28T14:03:11Z",
+  "mc": "1.12.2",
+  "forge": "14.23.5.2860",
+  "java": 8,
+  "files": [
+    { "path": "mods/SpawnerControl-1.6.3b.jar", "sha256": "<64 lowercase hex>", "size": 49537, "url": "mods/SpawnerControl-1.6.3b.jar" }
+  ],
+  "delete": [ "mods/SomethingRemoved.jar" ]
+}
+```
+
+- `path` is relative to the client instance root; `url` is relative to the
+  `/pack/` HTTPS route (currently identical to `path`).
+- `pack_version` is an ISO-8601 UTC timestamp, regenerated on every publish.
+- **Managed** (appear in `files` and can appear in `delete`): `mods/`,
+  `config/`, `scripts/`, `resources/`, `structures/`, `resourcepacks/`, and
+  anything else the client zip's `overrides/` carries.
+- **Never managed** (never in `files`, never in `delete`, the launcher must
+  never touch these): `saves/`, `screenshots/`, `logs/`, `crash-reports/`,
+  `options.txt`, `optionsof.txt`, `servers.dat`.
+- `delete` is **cumulative**: a removed file's path stays in `delete` until
+  it reappears in `files`, so a launcher install that is several publishes
+  behind still learns about a removal from two publishes ago, not just the
+  most recent one — the launcher must not assume `delete` only ever
+  contains the previous publish's removals.
+
+### The trust anchor — pinning is the only defense, not the hashes
+
+**The launcher must pin `ca/campfire-ca.pem` and must disable the built-in
+root certificate store, so that our CA is the only certificate authority it
+will accept for this hostname.** This is a requirement, not a suggestion.
+
+Why: the manifest's per-file hashes are served by the same host that serves
+the files. An attacker who can impersonate `mc.campfire.pub` — DNS
+hijack, a compromised CDN, a MITM on the friend's network — serves both a
+forged file and a matching forged hash computed over that same forged file.
+Hash verification alone proves internal consistency between the manifest
+and the download; it proves nothing about who served either of them.
+**TLS pinning to our own private CA is the only trust anchor in this
+design.** A launcher that verified every hash correctly but accepted any
+publicly-trusted certificate for this hostname would have no security at
+all against that attack.
+
+`scripts/assemble-client.py` is the reference implementation of exactly
+this: it trusts only `ca/campfire-ca.pem`, with no system-trust-store
+fallback, and Phase 4's launcher must mirror that behaviour exactly.
+Phase 5 must embed the CA certificate in the shipped binaries so a fresh
+install has it before ever making its first request.
+
+### Nick casing — the one contract item that silently destroys progress
+
+The launcher must always pass through the exact casing `/api/validate`'s
+response returns, **never** a player-retyped variant, and never the
+lowercased uniqueness key used for registration matching. Minecraft's
+offline-mode UUID is derived from the exact username byte string
+(`UUID.nameUUIDFromBytes("OfflinePlayer:" + nick)`), so a differently-cased
+connection computes a different UUID and the player silently loses their
+inventory and progress — with no error, no warning, just an empty world
+that looks like data loss. See `auth-service/README.md`'s "Nick casing"
+note for the full mechanism.
+
+### Two known gaps this phase deliberately leaves for Phase 4
+
+1. **`options.txt` / `optionsof.txt` seeding.** The base pack ships tuned
+   defaults for both files, but the locked manifest schema above explicitly
+   never manages either of them (they are player state, correctly excluded
+   from `delete` so a player's tuned settings are never clobbered by a
+   publish). This means the manifest alone cannot deliver the pack's
+   intended tuned defaults to a brand-new install. The launcher must seed
+   its own default template for both files on first install, and must never
+   overwrite either file on any subsequent sync once it exists.
+2. **The file server is not a manual-download path.** A friend's browser
+   will show a certificate warning when visiting `/manifest.json` or
+   `/pack/*` directly, because the CA is private and no browser trusts it.
+   That is fine — friends are expected to use the launcher, which pins the
+   CA and never warns — but it means this HTTPS front cannot double as a
+   "click here to download the pack" page for a non-technical person. The
+   CurseForge hand-install path in `docs/CLIENT-SETUP.md` remains the only
+   supported manual route until the launcher ships.
+
+### Router forward result (2026-08-28)
+
+One rule was added: **TCP 8444 → the Pi's LAN address, external port 8444**
+— no range, no DMZ. The existing TCP 25565 rule from Phase 1 is untouched.
+Confirmed by three independent lines of evidence, because the operator's
+phone was not available for the in-hand check this plan originally
+specified:
+
+- **From the Pi itself**, `bash scripts/reachability.sh --https` (which
+  forces the connection to the resolved public IP via `curl --resolve`, so
+  the Pi's own `/etc/hosts` entry cannot fake a pass) returned
+  `VERDICT: PASS` with exit 0 — proof this router does NAT hairpin.
+- **From three external networks**, a check-host.net raw TCP probe against
+  `91.193.195.130:8444` succeeded from Hong Kong, Sweden, and Miami (USA)
+  nodes, each with a clean connect time and no error.
+- **From three more external networks**, a check-host.net HTTP probe
+  against `https://mc.campfire.pub:8444/manifest.json` returned `200 OK`
+  from Bulgaria, Iran, and Ukraine nodes.
+- As a negative control, the same probe against `91.193.195.130:22`
+  (SSH, never forwarded) returned "Connection refused" from two external
+  nodes — confirming the router forward is scoped to exactly 8444, not
+  wider.
+
+Six independent external successes against zero external successes for a
+deliberately-unforwarded port is stronger evidence than the phone check
+this plan specified, and both proofs answer the identical question: is
+`mc.campfire.pub:8444` reachable from outside the operator's home network.
+The phone-in-hand check was not performed; it is not needed given the
+above, but remains available to the operator at any time as a spot-check.
+
 ## See also
 
 - `auth-service/README.md` — the full public route table and the
