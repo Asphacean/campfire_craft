@@ -2,6 +2,12 @@
 Description=RLCraft dedicated server (Forge 1.12.2 on Temurin 8)
 After=network-online.target
 Wants=network-online.target
+# WR-02: both this unit and rlcraft-nft.service are WantedBy=multi-user.target
+# with no ordering between them, so systemd is free to start them in parallel
+# at boot — RCON could be listening before the D-08 drop rule loads. Force the
+# firewall rule to load first.
+After=rlcraft-nft.service
+Wants=rlcraft-nft.service
 
 [Service]
 Type=simple
