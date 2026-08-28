@@ -96,7 +96,20 @@ Plans:
   4. Minecraft jars, libraries and assets are never served from our host; only license-permitting mods/configs are
   5. A status endpoint reports server online/offline and current player count
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Private CA, Caddy on :8444, the route table, and a real Server List Ping /status (DIST-01, DIST-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — publish-pack.sh: the full client pack, the hashed manifest, and a client assembled from nothing but it (DIST-01, DIST-02, DIST-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — Router forward for TCP 8444, an honest reachability check, and the Phase 4 integration contract (DIST-01, DIST-03, DIST-04)
 
 ### Phase 4: Launcher
 
@@ -138,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
-| 3. Modpack Distribution | 0/TBD | Not started | - |
+| 3. Modpack Distribution | 0/3 | Planned | - |
 | 4. Launcher | 0/TBD | Not started | - |
 | 5. Release to Friends | 0/TBD | Not started | - |
 
