@@ -37,6 +37,13 @@ Safety behaviour (this is also the operator's restore runbook):
      startup-complete log line before printing a verdict naming the
      restored archive and the pre-restore safety archive.
 
+If the archive also carries an accounts snapshot (Phase 2, auth/campfire.db),
+it is extracted to $BACKUP_DIR/restored-auth-<UTC timestamp>/ and left
+there — it is NEVER moved into place automatically. A world restore must
+never silently roll accounts back; the two datasets have independent
+lifetimes and applying the accounts snapshot is a separate, deliberate
+operator action.
+
 Examples:
   scripts/restore.sh                       # restore the newest world-*.tar.zst
   scripts/restore.sh /path/to/world-X.tar.zst
@@ -141,6 +148,18 @@ if ! tar --zstd -xf "$ARCHIVE" -C "$ROOT_DIR/server"; then
   exit 1
 fi
 rm -rf "$MOVED_ASIDE"
+
+# Phase 2: the archive may also carry an accounts snapshot (auth/campfire.db)
+# — it extracts alongside world/ under server/ because that's the tar's -C
+# target, but it must never land there or silently replace the live
+# AUTH_DB. Move it aside to a clearly-labelled, never-applied-automatically
+# location; the two datasets have independent lifetimes (a world restore is
+# not an accounts restore).
+if [[ -d "$ROOT_DIR/server/auth" ]]; then
+  RESTORED_AUTH_DIR="$BACKUP_DIR/restored-auth-$TS"
+  mv "$ROOT_DIR/server/auth" "$RESTORED_AUTH_DIR"
+  echo "Accounts snapshot from this archive extracted to: $RESTORED_AUTH_DIR (NOT applied)"
+fi
 
 echo "== Starting rlcraft.service =="
 RESTART_START_TS=$(date +%s)

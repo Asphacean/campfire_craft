@@ -1,0 +1,30 @@
+[Unit]
+Description=campfire-auth (accounts + token issuance, loopback-only)
+After=network.target
+
+[Service]
+Type=simple
+User=asphacean
+WorkingDirectory=/home/asphacean/rlcraft
+EnvironmentFile=/home/asphacean/rlcraft/server.env
+# AUTH_BIND/AUTH_DB are already in this unit's process environment via
+# EnvironmentFile= above — never interpolate either onto this command line
+# (same CR-01 reasoning rlcraft.service applies to RCON_PASSWORD: a command
+# line is world-readable through /proc). The binary itself also refuses to
+# bind a non-loopback AUTH_BIND (D-16) — this unit's own loopback-only
+# hardening below is defense in depth, not the only enforcement point.
+ExecStart=/usr/local/bin/campfire-auth serve
+Restart=on-failure
+RestartSec=5
+
+# Cheap hardening that doesn't fight the database path under
+# /home/asphacean/rlcraft/auth/.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

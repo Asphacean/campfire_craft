@@ -72,6 +72,22 @@ impl Db {
                 created_at  INTEGER NOT NULL
             );",
         )?;
+
+        // D-13: the database file must end up mode 600 — SQLite's own
+        // default (governed by the process umask) is not assumed here.
+        // WAL mode (set above) creates `-wal`/`-shm` sibling files
+        // alongside the main file; every one of the three that exists at
+        // this point gets the same treatment.
+        for suffix in ["", "-wal", "-shm"] {
+            let sibling = format!("{path}{suffix}");
+            if std::path::Path::new(&sibling).exists() {
+                let _ = std::fs::set_permissions(
+                    &sibling,
+                    std::os::unix::fs::PermissionsExt::from_mode(0o600),
+                );
+            }
+        }
+
         Ok(Self {
             conn: Mutex::new(conn),
         })

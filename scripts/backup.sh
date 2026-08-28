@@ -51,6 +51,7 @@ chmod 700 "$BACKUP_DIR"
 LOG_FILE="$BACKUP_DIR/backup.log"
 
 ARCHIVE_PATH=""
+AUTH_SNAPSHOT_DIR=""
 START_TS=$(date +%s)
 
 # Step 2: EXIT trap that always issues RCON save-on, so an abort anywhere
@@ -70,6 +71,7 @@ on_exit() {
     printf '%s ERROR save-on failed after exit code %s\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ec" >> "$LOG_FILE" 2>/dev/null
   fi
+  [[ -n "$AUTH_SNAPSHOT_DIR" && -d "$AUTH_SNAPSHOT_DIR" ]] && rm -rf "$AUTH_SNAPSHOT_DIR"
   exit "$ec"
 }
 trap on_exit EXIT
@@ -87,10 +89,36 @@ if [[ -n "${BACKUP_TEST_FAIL_AFTER_SAVEOFF:-}" ]]; then
   exit 1
 fi
 
-# Step 4: one tar of the whole world/ tree, relative paths only.
+# Step 3b: accounts database snapshot (D-13, Phase 2). `.backup` is the only
+# WAL-safe way to copy a live SQLite file — a plain `cp` of a WAL database is
+# the same class of mistake as tarring a live world, which is exactly why
+# this runs right alongside the RCON-paused world snapshot above rather than
+# afterward. Staged into <tmp>/auth/campfire.db so the single tar invocation
+# below can add it as a second root, producing an `auth/campfire.db` member
+# alongside `world/` in the same archive — no second archive file. Missing
+# AUTH_DB (Phase 1 hosts, or Phase 2 not yet installed) degrades to a
+# world-only archive rather than failing the world backup; the world is the
+# irreplaceable artifact.
+AUTH_TAR_ARGS=()
+if [[ -n "${AUTH_DB:-}" && -f "$AUTH_DB" ]]; then
+  AUTH_SNAPSHOT_DIR="$(mktemp -d)"
+  mkdir -p "$AUTH_SNAPSHOT_DIR/auth"
+  if sqlite3 "$AUTH_DB" ".backup '$AUTH_SNAPSHOT_DIR/auth/campfire.db'" 2>/dev/null; then
+    AUTH_TAR_ARGS=(-C "$AUTH_SNAPSHOT_DIR" auth)
+  else
+    echo "WARNING: sqlite3 .backup of AUTH_DB failed — archive will be world-only" >&2
+    rm -rf "$AUTH_SNAPSHOT_DIR"
+    AUTH_SNAPSHOT_DIR=""
+  fi
+else
+  echo "INFO: AUTH_DB not set or file missing — archive will be world-only" >&2
+fi
+
+# Step 4: one tar of the whole world/ tree (plus the accounts snapshot
+# staged above, if any), relative paths only.
 TS="$(date -u +%Y%m%d-%H%M%S)"
 ARCHIVE_PATH="$BACKUP_DIR/world-$TS.tar.zst"
-if ! tar --zstd -cf "$ARCHIVE_PATH" -C "$ROOT_DIR/server" world; then
+if ! tar --zstd -cf "$ARCHIVE_PATH" -C "$ROOT_DIR/server" world "${AUTH_TAR_ARGS[@]}"; then
   echo "FATAL: tar failed" >&2
   rm -f "$ARCHIVE_PATH"
   ARCHIVE_PATH=""
