@@ -5,6 +5,7 @@ mod api;
 mod auth;
 mod db;
 mod ratelimit;
+mod slp;
 
 use std::io::Read;
 use std::net::SocketAddr;
@@ -19,6 +20,10 @@ use db::Db;
 use ratelimit::RateLimiter;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8081";
+/// D-11: SLP ping target, overridable so the offline branch can be
+/// exercised against a dead port without stopping the game server. Not a
+/// listener — no bind guard needed.
+const DEFAULT_SLP_ADDR: &str = "127.0.0.1:25565";
 
 /// D-04: 5 registrations/hour/peer.
 const REGISTER_LIMIT: usize = 5;
@@ -162,11 +167,15 @@ async fn serve() {
         std::process::exit(1);
     }
 
+    let slp_addr = std::env::var("SLP_ADDR").unwrap_or_else(|_| DEFAULT_SLP_ADDR.to_string());
+
     let state = Arc::new(AppState {
         db,
         register_limiter: RateLimiter::new(RATE_WINDOW, REGISTER_LIMIT),
         login_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_FAIL_LIMIT),
         login_success_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_SUCCESS_LIMIT),
+        slp_addr,
+        status_cache: std::sync::Mutex::new(None),
     });
 
     let app = Router::new()

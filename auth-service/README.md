@@ -65,14 +65,25 @@ a token cannot be validated twice even under concurrent calls.
 
 ### `GET /status`
 
-No request body.
+No request body. Never rate limited.
 
 | Status | Body |
 |--------|------|
-| 200 | `{"online": true, "players": null}` |
+| 200 | `{"online": <bool>, "players": <number\|null>, "max": <number\|null>, "motd": <string\|null>}` |
 
-Fixed placeholder for this phase — no RCON call. A real player count is
-added only once Phase 3/4 actually need one.
+Performs a real Minecraft Server List Ping (protocol 340, hand-rolled — no
+crate, see `src/slp.rs`) against `SLP_ADDR` (default `127.0.0.1:25565`),
+cached for 10 seconds so a burst of launcher polls doesn't re-ping on every
+request. When the server is reachable: `online: true`, `players` and `max`
+are the real counts, `motd` is the message of the day (always a plain
+string — the raw ping response can send this as `{"text": "..."}`, which
+this handler unwraps). When the server is unreachable, the ping times out
+(5s), or the response fails to parse: `online: false` with `players`,
+`max`, and `motd` all `null` — **always HTTP 200**, never a 5xx, because
+"the game is off" is a normal answer this endpoint must be able to give.
+The raw Server List Ping response also carries a Forge mod list (~7.2kB on
+this server); this handler discards it entirely and returns only the four
+fields above.
 
 ## Operator CLI
 
@@ -97,6 +108,7 @@ invoked through the installed unit's environment):
 |----------|---------|---------|
 | `AUTH_BIND` | `127.0.0.1:8081` | Listen address. The binary refuses to start if this is not a loopback address (D-16) — a config typo cannot expose this service. |
 | `AUTH_DB` | *(required, no default)* | Path to the SQLite accounts database. Directory `auth/` is mode 700; the database file is mode 600 (asserted, not assumed from SQLite's own default) and gitignored. |
+| `SLP_ADDR` | `127.0.0.1:25565` | Server List Ping target for `GET /status` (D-11). Not a listener — no bind guard. Overriding this to a dead port is how the offline branch is exercised without stopping the game server. |
 
 ## Running the smoke suite
 
@@ -118,13 +130,20 @@ database.
    published through the reverse proxy.** It has no rate limit by design
    (joins must never be throttled) and no authentication of its own beyond
    the token itself — it is safe only because its only caller today is the
-   game server on the same host.
-2. **The per-IP rate limiter sees the direct TCP peer address.** Once Phase
-   3 puts Caddy in front of this service, every `/register`/`/login`
-   request will arrive from Caddy's own address (127.0.0.1), collapsing
-   every real client into one rate-limit bucket. Phase 3 must either keep
-   `/register` and `/login` reachable directly (bypassing Caddy) or teach
-   this limiter to read a forwarded-for header from a trusted proxy only.
+   game server on the same host. `caddy/Caddyfile` (Phase 3) has no route
+   for this path at all, and its terminal handler answers a deterministic
+   404 for it and everything else unrouted.
+2. **The per-IP rate limiter now sees through Caddy (Phase 3, done).**
+   `caddy/Caddyfile` **sets** (not appends) `X-Forwarded-For` on the two
+   proxied `/api` routes to its own view of the immediate client address —
+   so a value the client itself supplied in that header is discarded at the
+   edge, never forwarded. `register`/`login` resolve the rate-limiting
+   address via `client_ip()` in `src/api.rs`: when the direct TCP peer is
+   loopback (true for every request Caddy forwards) and a forwarded-for
+   header is present, the *last* comma-separated element is used (correct
+   whether the edge sets or appends); otherwise the direct peer is used.
+   `/validate` deliberately never calls this helper — it is never rate
+   limited and never proxied.
 3. **`/validate`'s `nick` field is the exact registration casing, not the
    lowercased uniqueness key.** A client must connect to the game server
    with that exact casing — Minecraft's offline-mode UUID is derived from
@@ -133,3 +152,26 @@ database.
    connection computes a *different* UUID and the player silently loses
    their inventory and progress. The launcher must always pass through the
    casing `/validate` returns, never a player-retyped variant.
+
+## Public route table
+
+Base URL: `https://mc.campfire.pub:8444`. Trust anchor: `ca/campfire-ca.pem`
+(own private CA — the launcher must pin this, never fall back to the system
+trust store). Full detail, including the write guard and the 404 terminal
+handler, is in `caddy/Caddyfile` and `.planning/phases/03-modpack-distribution/03-01-PLAN.md`.
+
+| Public route | Method | Reaches (internal) | Notes |
+|---|---|---|---|
+| `/manifest.json` | GET, HEAD | `file_server` at `~/rlcraft/pack/manifest.json` | The pack contract |
+| `/pack/<url>` | GET, HEAD | `file_server` at `~/rlcraft/pack/<url>` | `<url>` is a manifest `files[].url` value verbatim |
+| `/api/register` | POST | `127.0.0.1:8081/register` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
+| `/api/login` | POST | `127.0.0.1:8081/login` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
+| `/status` | GET | `127.0.0.1:8081/status` | See `GET /status` above |
+| anything else | any | — | 404 from the terminal handler |
+| non-GET/HEAD on `/manifest.json` or `/pack/*` | — | — | 405 |
+
+**`/validate` has no public route and must never get one.** There is no
+wildcard under `/api` in `caddy/Caddyfile` — only these three exact paths
+are routed. Adding a prefix wildcard would republish the token-validation
+endpoint, which is unauthenticated beyond the token itself and has no rate
+limit by design.

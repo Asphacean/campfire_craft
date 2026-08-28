@@ -37,13 +37,22 @@ mc.campfire.pub:8444 {
 		# unauthenticated beyond the token itself and its only legitimate
 		# caller is the auth-gate mod over loopback (auth-service/README.md).
 		# Adding a prefix wildcard under /api would republish it (T-03-01-01).
+		# header_up SETS (does not append to) X-Forwarded-For with Caddy's own
+		# view of the immediate client address — a client-supplied value of
+		# the same header is discarded at the edge rather than prepended to
+		# a list (T-03-01-07/T-03-01-08). campfire-auth only trusts this
+		# header when the direct TCP peer is loopback, which Caddy always is.
 		handle /api/register {
 			uri strip_prefix /api
-			reverse_proxy 127.0.0.1:8081
+			reverse_proxy 127.0.0.1:8081 {
+				header_up X-Forwarded-For {http.request.remote.host}
+			}
 		}
 		handle /api/login {
 			uri strip_prefix /api
-			reverse_proxy 127.0.0.1:8081
+			reverse_proxy 127.0.0.1:8081 {
+				header_up X-Forwarded-For {http.request.remote.host}
+			}
 		}
 		handle /status {
 			reverse_proxy 127.0.0.1:8081

@@ -33,9 +33,11 @@ fail() {
 
 TMP_DIR=""
 SERVER_PID=""
+OFFLINE_PID=""
 on_exit() {
   local ec=$?
   [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
+  [[ -n "$OFFLINE_PID" ]] && kill "$OFFLINE_PID" >/dev/null 2>&1 || true
   [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
   exit "$ec"
 }
@@ -220,10 +222,88 @@ req 127.0.0.9 /validate "{\"nick\":\"FloodNick1\",\"token\":\"$FLOOD_TOKEN\"}"
 [[ "$REQ_CODE" == "200" ]] && pass "/validate for an already-registered account still returns 200 during a registration flood" \
   || fail "/validate unaffected by registration rate limit" "200" "$REQ_CODE"
 
-# --- /status (200, online field) ---
-STATUS_CODE=$(curl -s -o "$TMP_DIR/status.json" -w '%{http_code}' "$BASE_URL/status")
-[[ "$STATUS_CODE" == "200" ]] && grep -q '"online"' "$TMP_DIR/status.json" && pass "GET /status returns 200 with an online field" \
-  || fail "GET /status returns 200 with an online field" "200 + online" "$STATUS_CODE $(cat "$TMP_DIR/status.json")"
+# --- /status: real Server List Ping (D-11) ---
+# The primary smoke instance was started with no SLP_ADDR override, so it
+# defaults to 127.0.0.1:25565 — the live rlcraft.service on this host — and
+# exercises the online branch. Read-only SLP query; never stops/restarts it.
+STATUS_BODY=$(curl -s "$BASE_URL/status")
+STATUS_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/status")
+[[ "$STATUS_CODE" == "200" ]] && pass "GET /status against the live game server returns 200" \
+  || fail "GET /status live returns 200" "200" "$STATUS_CODE"
+
+echo "$STATUS_BODY" | jq -e '.online==true and (.players|type=="number") and (.max|type=="number") and (.motd|type=="string") and (keys|length==4)' >/dev/null \
+  && pass "live /status has exactly 4 keys: online true, numeric players/max, string motd (no Forge mod list)" \
+  || fail "live /status shape (4 keys, online true, numeric players/max, string motd)" "true" "$STATUS_BODY"
+
+STATUS_LEN=$(printf '%s' "$STATUS_BODY" | wc -c)
+[[ "$STATUS_LEN" -lt 512 ]] && pass "live /status body is under 512 bytes" \
+  || fail "live /status body under 512 bytes" "<512" "$STATUS_LEN"
+
+STATUS_A=$(curl -s "$BASE_URL/status")
+STATUS_B=$(curl -s "$BASE_URL/status")
+[[ "$STATUS_A" == "$STATUS_B" ]] && pass "two /status calls in quick succession are byte-identical (10s cache)" \
+  || fail "two quick /status calls are byte-identical" "$STATUS_A" "$STATUS_B"
+
+# --- /status offline branch: a second ephemeral instance with SLP_ADDR
+# pointed at a port nothing listens on, sharing the same temp database. ---
+OFFLINE_BIND="127.0.0.1:8098"
+OFFLINE_BASE="http://$OFFLINE_BIND"
+AUTH_BIND="$OFFLINE_BIND" AUTH_DB="$DB_PATH" SLP_ADDR="127.0.0.1:25599" "$BIN" serve >"$TMP_DIR/server-offline.log" 2>&1 &
+OFFLINE_PID=$!
+
+OFFLINE_READY=0
+for _ in $(seq 1 50); do
+  if curl -s -o /dev/null --max-time 1 "$OFFLINE_BASE/status"; then
+    OFFLINE_READY=1
+    break
+  fi
+  sleep 0.2
+done
+if [[ "$OFFLINE_READY" -ne 1 ]]; then
+  echo "FATAL: offline-SLP campfire-auth instance did not come up on $OFFLINE_BIND within 10s" >&2
+  cat "$TMP_DIR/server-offline.log" >&2 || true
+  exit 1
+fi
+
+OFFLINE_STATUS=$(curl -s "$OFFLINE_BASE/status")
+OFFLINE_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$OFFLINE_BASE/status")
+[[ "$OFFLINE_CODE" == "200" ]] && pass "GET /status with SLP_ADDR pointed at a dead port still returns 200" \
+  || fail "offline /status returns 200" "200" "$OFFLINE_CODE"
+
+echo "$OFFLINE_STATUS" | jq -e '.online==false and .players==null and .max==null and .motd==null' >/dev/null \
+  && pass "offline /status: online false, players/max/motd all null" \
+  || fail "offline /status shape (online false, players/max/motd null)" "true" "$OFFLINE_STATUS"
+
+kill "$OFFLINE_PID" >/dev/null 2>&1 || true
+wait "$OFFLINE_PID" 2>/dev/null || true
+OFFLINE_PID=""
+
+# --- Rate limiter forwarded-for handling (T-03-01-07/T-03-01-08). The
+# service trusts X-Forwarded-For only when the direct TCP peer is loopback
+# (client_ip() in api.rs) — which every peer is in this smoke suite, same as
+# every request Caddy forwards in production. This proves the service's own
+# half of the contract directly; the full Caddy-fronted proof (Caddy SETS
+# rather than appends the header at the edge, so a client-supplied value
+# never reaches here at all) is a separate acceptance check against the live
+# deployment, not reproducible without Caddy in front. ---
+for i in 1 2 3 4 5; do
+  req 127.0.0.7 /register "{\"nick\":\"XffBucket$i\",\"password\":\"xffpassword1\"}"
+done
+[[ "$REQ_CODE" == "201" ]] || fail "XFF-bucket fixture: 5th registration from 127.0.0.7 (within quota) returns 201" "201" "$REQ_CODE"
+XFF_EXHAUSTED_CODE=$(curl -s --interface 127.0.0.7 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"nick":"XffBucket6","password":"xffpassword1"}' "$BASE_URL/register")
+[[ "$XFF_EXHAUSTED_CODE" == "429" ]] || fail "127.0.0.7's own bucket is exhausted after 5 registrations" "429" "$XFF_EXHAUSTED_CODE"
+
+# A fresh, never-before-used peer (127.0.0.10) presenting an
+# X-Forwarded-For naming the already-exhausted 127.0.0.7 is limited under
+# that named address, not its own untouched one.
+SPOOFED_CODE=$(curl -s --interface 127.0.0.10 -H 'X-Forwarded-For: 127.0.0.7' -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"nick":"XffBucket7","password":"xffpassword1"}' "$BASE_URL/register")
+[[ "$SPOOFED_CODE" == "429" ]] && pass "a loopback peer's request is rate-limited under its forwarded-for header's address, not its own untouched peer address" \
+  || fail "request keyed on forwarded-for header value" "429" "$SPOOFED_CODE"
+
+# The same fresh peer without the header uses its own untouched budget.
+REAL_CODE=$(curl -s --interface 127.0.0.10 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"nick":"XffBucket8","password":"xffpassword1"}' "$BASE_URL/register")
+[[ "$REAL_CODE" == "201" ]] && pass "the same peer without a forwarded-for header uses its own untouched budget" \
+  || fail "peer without XFF header has its own budget" "201" "$REAL_CODE"
 
 # --- Operator CLI: login (mint) and reset — direct DB access, no HTTP ---
 CLI_TOKEN=$(AUTH_DB="$DB_PATH" "$BIN" login "$NICK")

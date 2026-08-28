@@ -1,12 +1,13 @@
 //! HTTP handlers: `/register`, `/login`, `/validate`, `/status`. Wired into
 //! the `axum::Router` in `main.rs`.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{ConnectInfo, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ use serde_json::json;
 use crate::auth;
 use crate::db::{Db, InsertUserResult};
 use crate::ratelimit::RateLimiter;
+
+/// D-11: how long a `/status` result is reused before pinging again.
+const STATUS_CACHE_TTL: Duration = Duration::from_secs(10);
 
 pub struct AppState {
     pub db: Db,
@@ -29,11 +33,32 @@ pub struct AppState {
     /// not a security control against brute force (that's `login_limiter`
     /// above).
     pub login_success_limiter: RateLimiter,
-    // Peer address comes from `ConnectInfo`, which is the direct TCP peer.
-    // Once Phase 3 puts Caddy in front of this service every request will
-    // arrive from 127.0.0.1 — Phase 3 must either keep these endpoints
-    // direct or teach this limiter to read a forwarded-for header from a
-    // trusted proxy. Repeated in auth-service/README.md for Phase 3/4.
+    /// D-11: SLP ping target (`SLP_ADDR`, default 127.0.0.1:25565).
+    pub slp_addr: String,
+    /// D-11: the last `/status` result and when it was computed, reused for
+    /// `STATUS_CACHE_TTL` instead of re-pinging on every launcher poll.
+    pub status_cache: Mutex<Option<(Instant, StatusResponse)>>,
+}
+
+/// Phase 3 (T-03-01-07/T-03-01-08): resolves the address to charge against
+/// the rate limiters. The service binds loopback only, so trusting a
+/// forwarded-for header unconditionally would be a spoofing hole for any
+/// caller that can reach it directly — this only trusts the header when the
+/// direct TCP peer is loopback (i.e. genuinely came through Caddy on this
+/// same host), and takes the *last* comma-separated element, which is
+/// correct whether the edge replaced the header (current Caddyfile) or
+/// appended to it (if that's ever changed later).
+fn client_ip(peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
+    if peer.ip().is_loopback() {
+        if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+            if let Some(candidate) = xff.rsplit(',').next() {
+                if let Ok(ip) = candidate.trim().parse::<IpAddr>() {
+                    return ip;
+                }
+            }
+        }
+    }
+    peer.ip()
 }
 
 /// 12 hours, in seconds (D-03).
@@ -140,31 +165,61 @@ pub struct ValidateResponse {
     pub nick: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct StatusResponse {
     pub online: bool,
     pub players: Option<u32>,
+    pub max: Option<u32>,
+    pub motd: Option<String>,
 }
 
-pub async fn status() -> Json<StatusResponse> {
-    // RESEARCH.md Open Question 2: ship a fixed placeholder for this phase,
-    // no RCON call — a real player count is added only once Phase 3/4
-    // actually need it.
-    Json(StatusResponse {
-        online: true,
-        players: None,
-    })
+/// D-11: real Server List Ping against `SLP_ADDR`, 10s cache. An
+/// unreachable server, a timeout, a malformed body, or any other failure
+/// all produce `online: false` with the other three fields null, returned
+/// with HTTP 200 — never a 5xx, because "the game is off" is a normal
+/// answer to this question and the launcher must be able to display it.
+pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> {
+    {
+        let cache = state.status_cache.lock().expect("status cache mutex poisoned");
+        if let Some((fetched_at, cached)) = cache.as_ref() {
+            if fetched_at.elapsed() < STATUS_CACHE_TTL {
+                return Json(cached.clone());
+            }
+        }
+    }
+
+    let fresh = match crate::slp::ping(&state.slp_addr).await {
+        Some(result) => StatusResponse {
+            online: true,
+            players: Some(result.players_online),
+            max: Some(result.players_max),
+            motd: Some(result.motd),
+        },
+        None => StatusResponse {
+            online: false,
+            players: None,
+            max: None,
+            motd: None,
+        },
+    };
+
+    let mut cache = state.status_cache.lock().expect("status cache mutex poisoned");
+    *cache = Some((Instant::now(), fresh.clone()));
+    Json(fresh)
 }
 
 pub async fn register(
     State(state): State<Arc<AppState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     body: Result<Json<RegisterRequest>, JsonRejection>,
 ) -> Result<StatusCode, ApiError> {
+    let limit_ip = client_ip(peer, &headers);
+
     // D-04: 5 registrations/hour/peer, counting every attempt — checked
     // before validation or DB work so a flood cannot spend CPU past this
     // point.
-    if !state.register_limiter.check(peer.ip()) {
+    if !state.register_limiter.check(limit_ip) {
         return Err(ApiError::RateLimited);
     }
 
@@ -192,8 +247,11 @@ pub async fn register(
 pub async fn login(
     State(state): State<Arc<AppState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     body: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Json<LoginResponse>, ApiError> {
+    let limit_ip = client_ip(peer, &headers);
+
     let Json(req) = body?;
     let nick_lower = req.nick.to_lowercase();
 
@@ -205,7 +263,7 @@ pub async fn login(
     // "under limit" before any of them recorded. Reserving up front closes
     // that race; refunding on success is what still keeps a successful
     // login from counting against it.
-    if !state.login_limiter.check(peer.ip()) {
+    if !state.login_limiter.check(limit_ip) {
         return Err(ApiError::RateLimited);
     }
 
@@ -230,12 +288,12 @@ pub async fn login(
         return Err(ApiError::InvalidCredentials);
     }
     let user = user.expect("ok implies user was found");
-    state.login_limiter.refund(peer.ip());
+    state.login_limiter.refund(limit_ip);
 
     // WR-04: a much looser limiter purely as a circuit breaker against
     // runaway automation from a caller who already knows a valid password
     // — this is separate from, and does not touch, `login_limiter` above.
-    if !state.login_success_limiter.check(peer.ip()) {
+    if !state.login_success_limiter.check(limit_ip) {
         return Err(ApiError::RateLimited);
     }
 
@@ -261,7 +319,10 @@ pub async fn validate(
     body: Result<Json<ValidateRequest>, JsonRejection>,
 ) -> Result<Json<ValidateResponse>, ApiError> {
     // Never rate limited — this is the join path and the caller is the
-    // game server on loopback; throttling it would throttle joins.
+    // game server on loopback; throttling it would throttle joins. This
+    // handler deliberately does not resolve/use `client_ip`: it is never
+    // rate limited and never proxied through Caddy (D-04), so there is
+    // nothing here for a forwarded-for header to matter to.
     let Json(req) = body?;
     let nick_lower = req.nick.to_lowercase();
 
