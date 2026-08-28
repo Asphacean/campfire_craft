@@ -6,6 +6,8 @@
 //! are themselves hashed with the same argon2id path before storage (D-03) —
 //! the raw token exists only in the /login response and the caller's memory.
 
+use std::sync::OnceLock;
+
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -49,4 +51,19 @@ pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     getrandom::fill(&mut bytes).expect("OS CSPRNG unavailable");
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+static DUMMY_HASH: OnceLock<String> = OnceLock::new();
+
+/// A valid argon2id PHC string that verifies against no real secret.
+/// `/login` runs the same argon2 verification cost against this hash for an
+/// unknown nick as it does against a real user's stored hash — otherwise an
+/// unknown-nick response would return measurably faster than a
+/// wrong-password response, letting a caller enumerate registered nicks by
+/// timing (T-02-01-01).
+pub fn dummy_hash() -> &'static str {
+    DUMMY_HASH.get_or_init(|| {
+        hash_secret("dummy-password-never-a-real-account-credential")
+            .expect("hashing the fixed dummy secret cannot fail")
+    })
 }
