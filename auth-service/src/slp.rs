@@ -17,6 +17,15 @@ const PROTOCOL_VERSION: i32 = 340;
 /// A hung or slow game server must never hang every `/status` caller
 /// (T-03-01-09) — a timeout is an ordinary offline result, not an error.
 const SLP_TIMEOUT: Duration = Duration::from_secs(5);
+/// Upper bound on the SLP response's string-length VarInt (WR-01). Only the
+/// *count* of bytes read is bounded on the wire (max 5, via `read_varint`'s
+/// `shift >= 35` check) — not the *value* it decodes to, which can be any
+/// `i32`. Without this cap, `read_exact_n`'s `vec![0u8; n]` would attempt a
+/// multi-gigabyte allocation on a malformed/corrupted response, and Rust's
+/// default allocation-failure behavior aborts the whole process — taking
+/// down `/register`, `/login`, and `/validate` too, not just `/status`. The
+/// real response here is ~7.2kB; 64 KiB is generous headroom.
+const MAX_SLP_STRING: usize = 64 * 1024;
 
 /// The subset of the raw SLP response `/status` actually needs. Discards
 /// everything else — in particular `modinfo.modList` (162 entries, ~7.2kB
@@ -107,6 +116,9 @@ pub async fn ping(addr: &str) -> Option<PingResult> {
         read_varint(&mut stream).await.ok()?; // total length, unused
         let _packet_id = read_varint(&mut stream).await.ok()?;
         let str_len = read_varint(&mut stream).await.ok()? as usize;
+        if str_len > MAX_SLP_STRING {
+            return None;
+        }
         let body = read_exact_n(&mut stream, str_len).await.ok()?;
 
         let value: Value = serde_json::from_slice(&body).ok()?;
