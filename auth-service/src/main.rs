@@ -32,6 +32,9 @@ const LOGIN_FAIL_LIMIT: usize = 10;
 /// WR-04: 60 *successful* logins/hour/peer — a loose circuit breaker
 /// against runaway automation, not a brute-force control.
 const LOGIN_SUCCESS_LIMIT: usize = 60;
+/// D-17/T-04-01-08: 60 `/refresh` calls/hour/peer — a circuit breaker, not
+/// a brute-force control (a refresh token has no guessable surface).
+const REFRESH_LIMIT: usize = 60;
 const RATE_WINDOW: Duration = Duration::from_secs(3600);
 /// Same TTL `/login` uses (D-03) — `campfire-auth login` mints through the
 /// same code path.
@@ -145,7 +148,25 @@ fn cli_reset(nick: &str) {
         std::process::exit(1);
     }
 
-    println!("Password reset for {nick}");
+    // D-17: a reset that left a stolen "remember me" refresh token alive
+    // would be a reset that did not fully happen — revoke every
+    // outstanding refresh token for this nick too.
+    let revoked_count = db
+        .find_user_by_nick_lower(&nick_lower)
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: database error: {e}");
+            std::process::exit(1);
+        })
+        .map(|user| {
+            db.revoke_all_refresh_for_user(user.id, db::now_unix())
+                .unwrap_or_else(|e| {
+                    eprintln!("FATAL: database error: {e}");
+                    std::process::exit(1);
+                })
+        })
+        .unwrap_or(0);
+
+    println!("Password reset for {nick} ({revoked_count} refresh token(s) revoked)");
 }
 
 async fn serve() {
@@ -174,6 +195,7 @@ async fn serve() {
         register_limiter: RateLimiter::new(RATE_WINDOW, REGISTER_LIMIT),
         login_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_FAIL_LIMIT),
         login_success_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_SUCCESS_LIMIT),
+        refresh_limiter: RateLimiter::new(RATE_WINDOW, REFRESH_LIMIT),
         slp_addr,
         status_cache: std::sync::Mutex::new(None),
     });
@@ -182,6 +204,7 @@ async fn serve() {
         .route("/register", post(api::register))
         .route("/login", post(api::login))
         .route("/validate", post(api::validate))
+        .route("/refresh", post(api::refresh))
         .route("/status", get(api::status))
         .with_state(state);
 

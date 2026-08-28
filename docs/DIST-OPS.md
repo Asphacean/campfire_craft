@@ -250,10 +250,12 @@ so Phase 4 never has to open a second document mid-implementation.
 | `/manifest.json` | GET, HEAD | `pack/manifest.json` via Caddy's `file_server` | The pack contract (schema below) |
 | `/pack/<url>` | GET, HEAD | `pack/<url>` via Caddy's `file_server` | A managed file; `<url>` is a `files[].url` value verbatim |
 | `/api/register` | POST | `campfire-auth` `/register` over loopback (127.0.0.1:8081) | 201, or 400/409/429 with a stable `{"error":"<code>"}` |
-| `/api/login` | POST | `campfire-auth` `/login` over loopback | `{"token","expires"}`, or 400/401/429 |
+| `/api/login` | POST | `campfire-auth` `/login` over loopback | `{"token","expires","refresh"}`, or 400/401/429 |
+| `/api/refresh` | POST | `campfire-auth` `/refresh` over loopback | `{"token","expires","refresh"}` (rotated), or 400/401/429 — see `auth-service/README.md`'s `POST /refresh` |
 | `/status` | GET | `campfire-auth` `/status` over loopback | `{"online","players","max","motd"}`; offline is HTTP 200 with `online:false`, never a 5xx |
+| `/launcher/<file>` | GET, HEAD | `file_server` at `launcher-dist/<file>` (Phase 4, outside `PACK_DIR`) | The self-update feed's static tree |
 | anything else | any | — | 404 from Caddy's terminal handler |
-| non-GET/HEAD on `/manifest.json` or `/pack/*` | — | — | 405 |
+| non-GET/HEAD on `/manifest.json`, `/pack/*` or `/launcher/*` | — | — | 405 |
 
 **`/api/validate` has no public route and must never be given one.** It is
 unauthenticated beyond the token itself and deliberately never rate

@@ -33,6 +33,11 @@ pub struct AppState {
     /// not a security control against brute force (that's `login_limiter`
     /// above).
     pub login_success_limiter: RateLimiter,
+    /// D-17/T-04-01-08: 60/hour/peer circuit breaker on `/refresh`, reserved
+    /// before any argon2 work happens. A refresh token is 32 random bytes —
+    /// there is no brute-force surface to defend, so this exists purely to
+    /// bound runaway automation, mirroring `login_success_limiter`'s shape.
+    pub refresh_limiter: RateLimiter,
     /// D-11: SLP ping target (`SLP_ADDR`, default 127.0.0.1:25565).
     pub slp_addr: String,
     /// D-11: the last `/status` result and when it was computed, reused for
@@ -63,6 +68,9 @@ fn client_ip(peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
 
 /// 12 hours, in seconds (D-03).
 const TOKEN_TTL_SECS: i64 = 12 * 60 * 60;
+/// 30 days, in seconds (D-17/AUTH-03) — the refresh token's TTL, separate
+/// from and much longer than the 12-hour game token above.
+const REFRESH_TTL_SECS: i64 = 30 * 24 * 60 * 60;
 
 /// D-04: nick pattern, checked as a character-class + length test rather
 /// than pulling in a regex crate for one shape.
@@ -152,6 +160,11 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub token: String,
     pub expires: i64,
+    /// D-17/AUTH-03: a 30-day random refresh token, issued alongside the
+    /// 12-hour game token. The launcher stores only this in the OS
+    /// credential store; the game token above keeps its existing meaning
+    /// and TTL untouched.
+    pub refresh: String,
 }
 
 #[derive(Deserialize)]
@@ -163,6 +176,19 @@ pub struct ValidateRequest {
 #[derive(Serialize)]
 pub struct ValidateResponse {
     pub nick: String,
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub nick: String,
+    pub refresh: String,
+}
+
+#[derive(Serialize)]
+pub struct RefreshResponse {
+    pub token: String,
+    pub expires: i64,
+    pub refresh: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -302,6 +328,7 @@ pub async fn login(
     // cost that grows with it) opportunistically on each successful login,
     // rather than standing up a background task for a table this small.
     state.db.prune_tokens(now).map_err(|_| ApiError::Internal)?;
+    state.db.prune_refresh(now).map_err(|_| ApiError::Internal)?;
 
     let token = auth::generate_token();
     let token_hash = auth::hash_secret(&token).map_err(|_| ApiError::Internal)?;
@@ -311,7 +338,21 @@ pub async fn login(
         .insert_token(user.id, &token_hash, expires)
         .map_err(|_| ApiError::Internal)?;
 
-    Ok(Json(LoginResponse { token, expires }))
+    // D-17/AUTH-03: mint a 30-day refresh token alongside the game token,
+    // through the same generate/hash path.
+    let refresh = auth::generate_token();
+    let refresh_hash = auth::hash_secret(&refresh).map_err(|_| ApiError::Internal)?;
+    let refresh_expires = now + REFRESH_TTL_SECS;
+    state
+        .db
+        .insert_refresh(user.id, &refresh_hash, refresh_expires)
+        .map_err(|_| ApiError::Internal)?;
+
+    Ok(Json(LoginResponse {
+        token,
+        expires,
+        refresh,
+    }))
 }
 
 pub async fn validate(
@@ -353,6 +394,90 @@ pub async fn validate(
             if consumed {
                 return Ok(Json(ValidateResponse { nick: user.nick }));
             }
+        }
+    }
+
+    Err(ApiError::InvalidToken)
+}
+
+/// `POST /refresh` (proxied publicly as `/api/refresh`, D-17/AUTH-03):
+/// exchange a live refresh token for a fresh game token and a rotated
+/// refresh token. Structured like [`validate`] — look the user up, walk
+/// unexpired/unrevoked candidates, argon2-verify each, and only a winning
+/// compare-and-swap revoke counts as having consumed that row. Every
+/// successful call revokes the presented token and issues a new one
+/// unconditionally (not just on age), which is what caps a stolen refresh
+/// token at a single unrotated use (T-04-01-05). Never logs the presented
+/// or issued token value.
+pub async fn refresh(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Result<Json<RefreshRequest>, JsonRejection>,
+) -> Result<Json<RefreshResponse>, ApiError> {
+    let limit_ip = client_ip(peer, &headers);
+
+    // Reserved before any argon2 work, same shape as /login's failure
+    // limiter (WR-01) — a circuit breaker, not a brute-force control (a
+    // refresh token has no guessable surface).
+    if !state.refresh_limiter.check(limit_ip) {
+        return Err(ApiError::RateLimited);
+    }
+
+    let Json(req) = body?;
+    let nick_lower = req.nick.to_lowercase();
+
+    let user = state
+        .db
+        .find_user_by_nick_lower(&nick_lower)
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::InvalidToken)?;
+
+    let now = crate::db::now_unix();
+    let candidates = state
+        .db
+        .candidate_refresh_tokens(user.id, now)
+        .map_err(|_| ApiError::Internal)?;
+
+    for candidate in candidates {
+        if auth::verify_secret(&req.refresh, &candidate.token_hash) {
+            let revoked = state
+                .db
+                .revoke_refresh(candidate.id, now)
+                .map_err(|_| ApiError::Internal)?;
+            if !revoked {
+                // Lost the race to another concurrent refresh call — this
+                // presented value is now dead either way, so this call has
+                // not won the row. Unknown nick, no match, and a lost race
+                // are all the same 401 to the caller (no distinction, per
+                // D-17).
+                break;
+            }
+
+            state.db.prune_tokens(now).map_err(|_| ApiError::Internal)?;
+            state.db.prune_refresh(now).map_err(|_| ApiError::Internal)?;
+
+            let token = auth::generate_token();
+            let token_hash = auth::hash_secret(&token).map_err(|_| ApiError::Internal)?;
+            let expires = now + TOKEN_TTL_SECS;
+            state
+                .db
+                .insert_token(user.id, &token_hash, expires)
+                .map_err(|_| ApiError::Internal)?;
+
+            let new_refresh = auth::generate_token();
+            let new_refresh_hash = auth::hash_secret(&new_refresh).map_err(|_| ApiError::Internal)?;
+            let new_refresh_expires = now + REFRESH_TTL_SECS;
+            state
+                .db
+                .insert_refresh(user.id, &new_refresh_hash, new_refresh_expires)
+                .map_err(|_| ApiError::Internal)?;
+
+            return Ok(Json(RefreshResponse {
+                token,
+                expires,
+                refresh: new_refresh,
+            }));
         }
     }
 

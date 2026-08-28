@@ -90,7 +90,16 @@ impl Db {
                 expires_at  INTEGER NOT NULL,
                 consumed_at INTEGER,
                 created_at  INTEGER NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                id          INTEGER PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id),
+                token_hash  TEXT NOT NULL,
+                expires_at  INTEGER NOT NULL,
+                revoked_at  INTEGER,
+                created_at  INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);",
         )?;
 
         // D-13: the database file must end up mode 600 — SQLite's own
@@ -226,5 +235,82 @@ impl Db {
             params![now, token_id],
         )?;
         Ok(changed == 1)
+    }
+
+    /// Store a newly issued 30-day refresh token's hash for `user_id`
+    /// (D-17/AUTH-03). Mirrors [`Self::insert_token`] exactly.
+    pub fn insert_refresh(
+        &self,
+        user_id: i64,
+        token_hash: &str,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![user_id, token_hash, expires_at, now_unix()],
+        )?;
+        Ok(())
+    }
+
+    /// All unexpired, unrevoked refresh-token candidates for `user_id`,
+    /// newest first — mirrors [`Self::candidate_tokens`] exactly.
+    pub fn candidate_refresh_tokens(
+        &self,
+        user_id: i64,
+        now: i64,
+    ) -> rusqlite::Result<Vec<TokenCandidate>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, token_hash FROM refresh_tokens
+             WHERE user_id = ?1 AND revoked_at IS NULL AND expires_at > ?2
+             ORDER BY id DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![user_id, now], |row| {
+                Ok(TokenCandidate {
+                    id: row.get(0)?,
+                    token_hash: row.get(1)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Atomically revoke one refresh-token row: `revoked_at IS NULL` in the
+    /// WHERE clause makes this a compare-and-swap, exactly like
+    /// [`Self::consume_token`] — this is the rotation-on-use enforcement
+    /// point (T-04-01-05). Returns `true` only if this call won the race.
+    pub fn revoke_refresh(&self, id: i64, now: i64) -> rusqlite::Result<bool> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let changed = conn.execute(
+            "UPDATE refresh_tokens SET revoked_at = ?1 WHERE id = ?2 AND revoked_at IS NULL",
+            params![now, id],
+        )?;
+        Ok(changed == 1)
+    }
+
+    /// Revoke every outstanding refresh token for `user_id` (D-17: a
+    /// password reset ends remembered sessions, not just future logins).
+    /// Returns the number of rows this call revoked.
+    pub fn revoke_all_refresh_for_user(&self, user_id: i64, now: i64) -> rusqlite::Result<usize> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let changed = conn.execute(
+            "UPDATE refresh_tokens SET revoked_at = ?1 WHERE user_id = ?2 AND revoked_at IS NULL",
+            params![now, user_id],
+        )?;
+        Ok(changed)
+    }
+
+    /// Delete revoked or past-TTL refresh-token rows — mirrors
+    /// [`Self::prune_tokens`] exactly, called alongside it on every
+    /// successful `/login`.
+    pub fn prune_refresh(&self, now: i64) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "DELETE FROM refresh_tokens WHERE revoked_at IS NOT NULL OR expires_at < ?1",
+            params![now],
+        )?;
+        Ok(())
     }
 }

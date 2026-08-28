@@ -40,7 +40,7 @@ mc.campfire.pub:8444 {
 		# with an unhandled method.
 		@write_guard {
 			not method GET HEAD
-			path /manifest.json /pack/*
+			path /manifest.json /pack/* /launcher/*
 		}
 		respond @write_guard 405
 
@@ -70,6 +70,16 @@ mc.campfire.pub:8444 {
 		handle /status {
 			reverse_proxy 127.0.0.1:8081
 		}
+		# Phase 4 (D-17/AUTH-03): the refresh-token exchange. Same shape as
+		# the two handles above — copied verbatim, not paraphrased, because
+		# the header_up line is the anti-spoofing control the rate limiter
+		# depends on (T-04-01-09).
+		handle /api/refresh {
+			uri strip_prefix /api
+			reverse_proxy 127.0.0.1:8081 {
+				header_up X-Forwarded-For {http.request.remote.host}
+			}
+		}
 
 		# Pack file server (D-01). No `browse` directive here, ever —
 		# file_server disables directory listing by default; the only
@@ -87,6 +97,19 @@ mc.campfire.pub:8444 {
 		# PACK_DIR, not pack/pack/mods/x.jar.
 		handle_path /pack/* {
 			root * /home/asphacean/rlcraft/pack
+			file_server {
+				hide .*
+			}
+		}
+
+		# Phase 4 (LNCH-08): the launcher self-update feed. Rooted OUTSIDE
+		# PACK_DIR, deliberately — scripts/gen-manifest.py walks everything
+		# under the pack root, so a launcher tree living inside pack/ would
+		# get silently republished as managed pack files that every client
+		# downloads into its game directory. Do not "tidy" these two trees
+		# together later.
+		handle_path /launcher/* {
+			root * /home/asphacean/rlcraft/launcher-dist
 			file_server {
 				hide .*
 			}

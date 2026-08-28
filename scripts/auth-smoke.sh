@@ -323,17 +323,87 @@ req 127.0.0.6 /login "{\"nick\":\"$RESET_NICK\",\"password\":\"newpassword1\"}"
 [[ "$REQ_CODE" == "200" ]] && pass "after campfire-auth reset, the new password succeeds login with 200" \
   || fail "new password succeeds after reset" "200" "$REQ_CODE"
 
+# ============================================================
+# Phase 4 (D-17/AUTH-03): refresh tokens — 127.0.0.11..14, distinct
+# loopback sources so these don't spend the flood test's quota.
+# ============================================================
+
+# --- happy path: login returns a refresh, /refresh rotates it — 127.0.0.11 ---
+req 127.0.0.11 /login "{\"nick\":\"$NICK\",\"password\":\"$PASSWORD\"}"
+REFRESH1=$(extract_json_string "$REQ_BODY" refresh)
+REFRESH1_LEN=${#REFRESH1}
+[[ "$REFRESH1_LEN" -ge 40 ]] && pass "login also returns a refresh token at least 40 chars long" \
+  || fail "login refresh length >= 40" "true" "len=$REFRESH1_LEN body=$REQ_BODY"
+
+req 127.0.0.11 /refresh "{\"nick\":\"$NICK\",\"refresh\":\"$REFRESH1\"}"
+REFRESH_GAME_TOKEN=$(extract_json_string "$REQ_BODY" token)
+REFRESH2=$(extract_json_string "$REQ_BODY" refresh)
+[[ "$REQ_CODE" == "200" ]] && pass "refresh with a live refresh token returns 200" \
+  || fail "refresh returns 200" "200" "$REQ_CODE"
+[[ -n "$REFRESH_GAME_TOKEN" && ${#REFRESH_GAME_TOKEN} -ge 40 ]] && pass "refresh returns a fresh game token at least 40 chars long" \
+  || fail "refresh game token length >= 40" "true" "$REQ_BODY"
+[[ -n "$REFRESH2" && "$REFRESH2" != "$REFRESH1" ]] && pass "refresh rotates: the new refresh value differs from the presented one" \
+  || fail "refresh rotates to a new value" "different from $REFRESH1" "$REFRESH2"
+
+# --- rotation is real: replaying the original refresh token dies — 127.0.0.11 ---
+req 127.0.0.11 /refresh "{\"nick\":\"$NICK\",\"refresh\":\"$REFRESH1\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "replaying the original (now-rotated) refresh token returns 401" \
+  || fail "replayed refresh token returns 401" "401" "$REQ_CODE"
+echo "$REQ_BODY" | grep -q '"invalid_token"' && pass "replayed refresh token error code is invalid_token" \
+  || fail "replayed refresh error code" "invalid_token" "$REQ_BODY"
+
+# --- the game token refresh minted is single-use, same as any other — 127.0.0.11 ---
+req 127.0.0.11 /validate "{\"nick\":\"$NICK\",\"token\":\"$REFRESH_GAME_TOKEN\"}"
+[[ "$REQ_CODE" == "200" ]] && pass "the game token minted by refresh validates once" \
+  || fail "refresh-minted game token validates" "200" "$REQ_CODE"
+req 127.0.0.11 /validate "{\"nick\":\"$NICK\",\"token\":\"$REFRESH_GAME_TOKEN\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "the game token minted by refresh is single-use, same as any other" \
+  || fail "refresh-minted game token replay returns 401" "401" "$REQ_CODE"
+
+# --- foreign-nick refresh (401) — 127.0.0.12, reusing the ForeignA/B fixture ---
+req 127.0.0.12 /login '{"nick":"ForeignA","password":"foreignpassword1"}'
+FOREIGN_REFRESH_A=$(extract_json_string "$REQ_BODY" refresh)
+req 127.0.0.12 /refresh "{\"nick\":\"ForeignB\",\"refresh\":\"$FOREIGN_REFRESH_A\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "refreshing with a token that belongs to a different nick returns 401" \
+  || fail "foreign-nick refresh returns 401" "401" "$REQ_CODE"
+
+# --- expired refresh token (401) — 127.0.0.13, expiry aged into the past ---
+req 127.0.0.13 /register '{"nick":"ExpRefreshNick","password":"expiredrefresh1"}'
+req 127.0.0.13 /login '{"nick":"ExpRefreshNick","password":"expiredrefresh1"}'
+EXPIRED_REFRESH=$(extract_json_string "$REQ_BODY" refresh)
+sqlite3 "$DB_PATH" "UPDATE refresh_tokens SET expires_at = 1 WHERE user_id = (SELECT id FROM users WHERE nick_lower = 'exprefreshnick');"
+req 127.0.0.13 /refresh "{\"nick\":\"ExpRefreshNick\",\"refresh\":\"$EXPIRED_REFRESH\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "refreshing with a token whose row has aged past its expiry returns 401" \
+  || fail "expired refresh token returns 401" "401" "$REQ_CODE"
+
+# --- campfire-auth reset revokes remembered sessions — 127.0.0.14 ---
+req 127.0.0.14 /register '{"nick":"ResetRefreshNick","password":"resetrefreshpw1"}'
+req 127.0.0.14 /login '{"nick":"ResetRefreshNick","password":"resetrefreshpw1"}'
+RESET_REFRESH=$(extract_json_string "$REQ_BODY" refresh)
+printf 'newresetrefreshpw1' | AUTH_DB="$DB_PATH" "$BIN" reset "ResetRefreshNick" >/dev/null
+req 127.0.0.14 /refresh "{\"nick\":\"ResetRefreshNick\",\"refresh\":\"$RESET_REFRESH\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "campfire-auth reset leaves an outstanding refresh token unusable" \
+  || fail "refresh token dead after reset" "401" "$REQ_CODE"
+
 # --- At-rest secrecy: hashes only, never plaintext (T-02-01-02 / T-02-01-05) ---
 BAD_HASH_COUNT=$(sqlite3 "$DB_PATH" "select count(*) from users where pw_hash NOT LIKE '\$argon2id\$%';")
 [[ "$BAD_HASH_COUNT" == "0" ]] && pass "every row of users.pw_hash starts with \$argon2id\$" \
   || fail "all pw_hash rows are argon2id PHC strings" "0" "$BAD_HASH_COUNT"
 
-PLAINTEXT_PW_COUNT=$(sqlite3 "$DB_PATH" 'select * from users;' | grep -cF "$PASSWORD" || true)
+PLAINTEXT_PW_COUNT=$(sqlite3 "$DB_PATH" 'select * from users;' | grep -cF -- "$PASSWORD" || true)
 [[ "$PLAINTEXT_PW_COUNT" == "0" ]] && pass "the fixture password never appears in the users table" \
   || fail "fixture password absent from users table" "0" "$PLAINTEXT_PW_COUNT"
 
-PLAINTEXT_TOKEN_COUNT=$(sqlite3 "$DB_PATH" 'select * from tokens;' | grep -cF "$TOKEN" || true)
+PLAINTEXT_TOKEN_COUNT=$(sqlite3 "$DB_PATH" 'select * from tokens;' | grep -cF -- "$TOKEN" || true)
 [[ "$PLAINTEXT_TOKEN_COUNT" == "0" ]] && pass "the issued token never appears in the tokens table" \
   || fail "issued token absent from tokens table" "0" "$PLAINTEXT_TOKEN_COUNT"
+
+BAD_REFRESH_HASH_COUNT=$(sqlite3 "$DB_PATH" "select count(*) from refresh_tokens where token_hash NOT LIKE '\$argon2id\$%';")
+[[ "$BAD_REFRESH_HASH_COUNT" == "0" ]] && pass "every row of refresh_tokens.token_hash starts with \$argon2id\$" \
+  || fail "all refresh_tokens rows are argon2id PHC strings" "0" "$BAD_REFRESH_HASH_COUNT"
+
+PLAINTEXT_REFRESH_COUNT=$(sqlite3 "$DB_PATH" 'select * from refresh_tokens;' | grep -cF -- "$REFRESH1" || true)
+[[ "$PLAINTEXT_REFRESH_COUNT" == "0" ]] && pass "the issued refresh token never appears in the refresh_tokens table" \
+  || fail "issued refresh token absent from refresh_tokens table" "0" "$PLAINTEXT_REFRESH_COUNT"
 
 echo "SMOKE OK ($CHECKS checks)"

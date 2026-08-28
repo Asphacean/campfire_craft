@@ -36,7 +36,7 @@ Request: `{"nick": "<nick>", "password": "<password>"}`
 
 | Status | Body | When |
 |--------|------|------|
-| 200 | `{"token": "<base64url, 43 chars>", "expires": <unix seconds>}` | Correct password |
+| 200 | `{"token": "<base64url, 43 chars>", "expires": <unix seconds>, "refresh": "<base64url, 43 chars>"}` | Correct password |
 | 401 | `{"error":"invalid_credentials"}` | Wrong password OR unknown nick — the two cases are deliberately indistinguishable in status, body, and timing (argon2 always runs, against a fixed dummy hash for an unknown nick) |
 | 400 | `{"error":"bad_json"}` | Malformed/incomplete body |
 | 429 | `{"error":"rate_limited"}` | More than 10 *failed* login attempts from this peer address in the last hour — successful logins never count |
@@ -45,6 +45,30 @@ Tokens are 32 CSPRNG bytes, base64url-encoded (no padding), TTL 12 hours,
 and are themselves stored argon2id-hashed — the raw value exists only in
 this response and the caller's memory. A token is single-use: consumed on
 its first successful `/validate` call, not on issuance.
+
+`refresh` (D-17/AUTH-03, Phase 4) is a separate 30-day random token, also
+argon2id-hashed at rest in its own `refresh_tokens` table. The launcher
+stores only this value, in the OS credential store — never the password.
+See `POST /refresh` below for how it is spent and rotated.
+
+### `POST /refresh`
+
+Request: `{"nick": "<nick>", "refresh": "<refresh token from /login or a prior /refresh>"}`
+
+| Status | Body | When |
+|--------|------|------|
+| 200 | `{"token": "<base64url, 43 chars>", "expires": <unix seconds>, "refresh": "<new base64url, 43 chars>"}` | The presented refresh token was live |
+| 401 | `{"error":"invalid_token"}` | Unknown nick, no matching unexpired/unrevoked token, or the presented token was already used — no distinction between the cases |
+| 400 | `{"error":"bad_json"}` | Malformed/incomplete body |
+| 429 | `{"error":"rate_limited"}` | More than 60 calls from this peer address in the last hour — a circuit breaker, not a brute-force control (a refresh token has no guessable surface) |
+
+Every successful call **rotates**: the presented refresh token is revoked
+in the same compare-and-swap that accepts it, and a brand-new 30-day
+refresh token is issued alongside a brand-new 12-hour game token.
+Rotation is unconditional — not just on age — which caps a stolen refresh
+token at exactly one unrotated use. `campfire-auth reset <nick>` revokes
+every outstanding refresh token for that nick, so a password reset ends
+remembered sessions too, not just future logins.
 
 ### `POST /validate`
 
@@ -100,7 +124,9 @@ invoked through the installed unit's environment):
   security control. Exits non-zero for an unknown nick.
 - `campfire-auth reset <nick>` — reads a new password from stdin, applies
   the same 8-character minimum as registration, and replaces the stored
-  hash. Exits non-zero for an unknown nick or a too-short password.
+  hash. Also revokes every outstanding refresh token for that nick
+  (D-17) — a reset ends remembered launcher sessions, not just future
+  logins. Exits non-zero for an unknown nick or a too-short password.
 
 ## Environment variables
 
@@ -166,9 +192,11 @@ handler, is in `caddy/Caddyfile` and `.planning/phases/03-modpack-distribution/0
 | `/pack/<url>` | GET, HEAD | `file_server` at `~/rlcraft/pack/<url>` | `<url>` is a manifest `files[].url` value verbatim |
 | `/api/register` | POST | `127.0.0.1:8081/register` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
 | `/api/login` | POST | `127.0.0.1:8081/login` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
+| `/api/refresh` | POST | `127.0.0.1:8081/refresh` | `/api` prefix stripped by Caddy; see `POST /refresh` above |
 | `/status` | GET | `127.0.0.1:8081/status` | See `GET /status` above |
+| `/launcher/<file>` | GET, HEAD | `file_server` at `~/rlcraft/launcher-dist/<file>` (Phase 4) | The self-update feed's static tree, rooted outside `PACK_DIR` so the pack manifest generator never walks it |
 | anything else | any | — | 404 from the terminal handler |
-| non-GET/HEAD on `/manifest.json` or `/pack/*` | — | — | 405 |
+| non-GET/HEAD on `/manifest.json`, `/pack/*` or `/launcher/*` | — | — | 405 |
 
 **`/validate` has no public route and must never get one.** There is no
 wildcard under `/api` in `caddy/Caddyfile` — only these three exact paths
