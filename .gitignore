@@ -30,3 +30,6 @@ server/resourcepacks/
 server/resources/
 server/scripts/
 server/structures/
+
+# runtime-regenerated dumps
+server/config/fantasticlib/reference/
