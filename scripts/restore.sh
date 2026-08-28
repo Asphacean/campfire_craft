@@ -56,7 +56,11 @@ source "$ROOT_DIR/server.env"
 : "${RCON_PASSWORD:?RCON_PASSWORD not set in server.env}"
 
 rcon() {
-  rcon-cli --host "$RCON_HOST" --port "$RCON_PORT" --password "$RCON_PASSWORD" "$@"
+  # CR-01: never pass RCON_PASSWORD as a CLI flag (visible via ps/proc to any
+  # local user) — rcon-cli reads RCON_HOST/RCON_PORT/RCON_PASSWORD from the
+  # environment.
+  RCON_HOST="$RCON_HOST" RCON_PORT="$RCON_PORT" RCON_PASSWORD="$RCON_PASSWORD" \
+    rcon-cli "$@"
 }
 
 ARCHIVE="${1:-}"

@@ -17,7 +17,12 @@ ExecStart=/home/asphacean/rlcraft/scripts/start-server.sh
 # 01-03 Task 2 restore testing: an unprefixed ExecStop marked the unit
 # "failed" on a mid-boot stop attempt (Result: exit-code) instead of a clean
 # stop. See 01-03-SUMMARY.md Deviations.
-ExecStop=-/usr/local/bin/rcon-cli --host ${RCON_HOST} --port ${RCON_PORT} --password ${RCON_PASSWORD} stop
+# CR-01: RCON_HOST/RCON_PORT/RCON_PASSWORD are already in this unit's process
+# environment via EnvironmentFile= above — rcon-cli reads them from there, so
+# they must never be interpolated onto this command line (systemd would
+# otherwise expand ${RCON_PASSWORD} into argv, visible via ps/proc to any
+# local user).
+ExecStop=-/usr/local/bin/rcon-cli stop
 KillMode=mixed
 TimeoutStopSec=90
 Restart=on-failure
