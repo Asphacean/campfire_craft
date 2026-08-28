@@ -334,6 +334,16 @@ extract_overrides() {
   # flag, so there is no safe way to deliver them without clobbering a
   # returning player's tuned settings on every publish. Closing that gap is
   # Phase 4's problem (RESEARCH.md Pitfall 4), not this manifest's.
+  #
+  # CR-01 defense-in-depth: a third-party CurseForge zip's overrides/ tree
+  # can carry a symlink, which `unzip`/`rsync -a` both preserve by default.
+  # The hard gate lives in gen-manifest.py (refuses to publish any symlink
+  # found under the pack root); this strips them here too, so a bad zip
+  # never even lands a symlink inside PACK_DIR in the first place.
+  local link
+  while IFS= read -r -d '' link; do
+    log "WARNING: dropped symlink from client zip overrides/: ${link#"$overrides_dir"/}"
+  done < <(find "$overrides_dir" -type l -print0 -delete)
   rsync -a \
     --exclude '/server.properties' \
     --exclude '/options.txt' \

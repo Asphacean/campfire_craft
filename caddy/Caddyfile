@@ -10,6 +10,19 @@
 }
 
 mc.campfire.pub:8444 {
+	# CR-01 key-permission decision: the leaf key is group-readable (640,
+	# group `caddy`) rather than copied to a caddy-owned 600 file. Caddy 2.11
+	# has no config knob to stop file_server from following symlinks, so a
+	# symlink planted under pack/ pointing at this key was a real path to
+	# leak it (verified live). That path is now closed at the source: both
+	# scripts/publish-pack.sh (strips symlinks out of the CurseForge zip's
+	# overrides/ tree right after extraction) and scripts/gen-manifest.py
+	# (hard-refuses to publish any tree that still contains one) reject
+	# symlinks before a manifest is ever written. With no symlink able to
+	# reach pack/, the lower-complexity 640 grant is the lower-risk option —
+	# a caddy-owned key copy would add a second copy needing to stay in sync
+	# on every scripts/renew-cert.sh rotation for no added protection against
+	# the actual threat this finding raised.
 	tls /home/asphacean/rlcraft/ca/mc.campfire.pub-cert.pem /home/asphacean/rlcraft/ca/mc.campfire.pub-key.pem
 
 	encode zstd gzip

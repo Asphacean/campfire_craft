@@ -75,7 +75,14 @@ def collect_paths(pack_root: str) -> list[str]:
             if name in NEVER_MANAGED_FILES:
                 continue
             full = os.path.join(dirpath, name)
-            if not os.path.isfile(full) or os.path.islink(full):
+            if os.path.islink(full):
+                # A symlink must never be silently skipped (CR-01): skipping
+                # left it un-validated but still physically present under
+                # pack_root, where Caddy's file_server would serve whatever
+                # it points at. Refuse the whole publish instead.
+                log(f"FATAL: {os.path.relpath(full, pack_root)} is a symlink — refusing to publish a tree containing symlinks")
+                sys.exit(3)
+            if not os.path.isfile(full):
                 continue
             rel = os.path.relpath(full, pack_root)
             if rel == "manifest.json":
