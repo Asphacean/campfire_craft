@@ -115,6 +115,10 @@ def validate_manifest_entries(manifest: dict, dest: str) -> list[dict]:
     files = manifest.get("files", [])
     forbidden_hits = []
     for entry in files:
+        for field in ("path", "url", "sha256", "size"):
+            if field not in entry:
+                log(f"FATAL: manifest entry missing required field '{field}': {entry}")
+                sys.exit(2)
         for field in ("path", "url"):
             value = entry.get(field, "")
             if os.path.isabs(value):
