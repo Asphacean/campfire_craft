@@ -13,11 +13,42 @@
 
 use std::io::Read;
 
-use campfire_launcher_core::{auth, http, status};
+use campfire_launcher_core::{auth, http, manifest, progress::Progress, status};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
+
+/// `--dir <path>` (shared by every subcommand below that touches the
+/// filesystem) overrides the install root for this process the same way
+/// `CAMPFIRE_HOME` does — `paths.rs` re-reads the environment on every
+/// call, so setting it once here is enough for the whole subcommand.
+fn take_dir_override(args: &mut Vec<String>) {
+    if let Some(pos) = args.iter().position(|a| a == "--dir") {
+        if pos + 1 < args.len() {
+            let dir = args.remove(pos + 1);
+            args.remove(pos);
+            // SAFETY: single-threaded at this point in `main`, before any
+            // spawned work reads the environment.
+            unsafe {
+                std::env::set_var("CAMPFIRE_HOME", dir);
+            }
+        }
+    }
+}
+
+fn print_progress(p: Progress) {
+    match p {
+        Progress::Step { name, current, total } => {
+            println!("[{name}] {current}/{total}");
+        }
+        Progress::Bytes { downloaded, total, per_sec } => {
+            println!("[bytes] {downloaded}/{total} · {per_sec} B/s");
+        }
+        Progress::Done => println!("[done]"),
+        Progress::Failed { code } => println!("[failed] {code}"),
+    }
+}
 
 fn usage() -> ! {
     eprintln!("{HELP_TEXT}");
@@ -34,24 +65,30 @@ fn read_stdin_trimmed() -> String {
 
 #[tokio::main]
 async fn main() {
-    let mut args = std::env::args();
-    let _argv0 = args.next();
-    match args.next().as_deref() {
-        Some("--help") | Some("-h") => {
-            println!("{HELP_TEXT}");
-        }
-        Some("status") => cmd_status().await,
-        Some("register") => {
-            let nick = args.next().unwrap_or_else(|| usage());
+    let mut args: Vec<String> = std::env::args().collect();
+    args.remove(0); // argv0
+    if args.is_empty() {
+        usage();
+    }
+    let subcommand = args.remove(0);
+    take_dir_override(&mut args);
+
+    match subcommand.as_str() {
+        "--help" | "-h" => println!("{HELP_TEXT}"),
+        "status" => cmd_status().await,
+        "register" => {
+            let nick = args.first().cloned().unwrap_or_else(|| usage());
             cmd_register(&nick).await;
         }
-        Some("login") => {
-            let nick = args.next().unwrap_or_else(|| usage());
+        "login" => {
+            let nick = args.first().cloned().unwrap_or_else(|| usage());
             cmd_login(&nick).await;
         }
-        Some("refresh") => cmd_refresh().await,
-        Some("keyring-selftest") => cmd_keyring_selftest(),
-        Some("pin-check") => cmd_pin_check().await,
+        "refresh" => cmd_refresh().await,
+        "keyring-selftest" => cmd_keyring_selftest(),
+        "pin-check" => cmd_pin_check().await,
+        "sync" => cmd_sync().await,
+        "verify" => cmd_verify().await,
         _ => usage(),
     }
 }
@@ -195,3 +232,34 @@ async fn cmd_pin_check() {
         }
     }
 }
+
+async fn cmd_sync() {
+    match manifest::sync(&print_progress).await {
+        Ok(report) => {
+            println!(
+                "SYNC OK — checked={} downloaded={} deleted={} seeded={} bytes={}",
+                report.checked, report.downloaded, report.deleted, report.seeded, report.bytes_downloaded
+            );
+        }
+        Err(e) => {
+            eprintln!("FATAL: sync failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn cmd_verify() {
+    match manifest::verify(&print_progress).await {
+        Ok(report) => {
+            println!(
+                "VERIFY OK — checked={} repaired={}",
+                report.checked, report.repaired
+            );
+        }
+        Err(e) => {
+            eprintln!("FATAL: verify failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+

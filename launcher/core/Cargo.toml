@@ -19,8 +19,19 @@ path = "src/bin/campfire-cli.rs"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "webpki-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "fs", "time"] }
 directories = "6"
+# Manifest sha256 diff/verify — pure Rust, no OpenSSL cross-compile pain
+# (04-RESEARCH.md Standard Stack, Package Legitimacy Audit: OK/Approved).
+sha2 = "0.10"
+# Bounded concurrent downloads (buffer_unordered) without spawning onto
+# 'static tasks — already a locked transitive dependency of tokio/reqwest,
+# promoted to a direct one for the manifest sync's 4-at-a-time download.
+futures-util = "0.3"
+# Per-segment percent-encoding of pack file URLs (spaces in real filenames)
+# while leaving '/' separators alone — already a locked transitive
+# dependency of `url`/reqwest, promoted to direct for the same reason.
+percent-encoding = "2"
 # RESEARCH.md: pin ^3 (not the current 4.x) — v3's Entry::new/set_password/
 # get_password surface is the only thing this crate needs, and 4.x's
 # modifiers-map API reshuffle buys nothing for one call site. `linux-native`

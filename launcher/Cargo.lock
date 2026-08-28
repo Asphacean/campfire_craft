@@ -273,10 +273,13 @@ name = "campfire-launcher-core"
 version = "0.1.0"
 dependencies = [
  "directories",
+ "futures-util",
  "keyring",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 
