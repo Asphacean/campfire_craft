@@ -140,13 +140,17 @@ if ! file "$DEST" | grep -qi 'Zip archive'; then
   exit 4
 fi
 
-if ! unzip -t "$DEST" >/tmp/fetch-pack-unzip-test.log 2>&1; then
+# WR-04: mktemp instead of a fixed, guessable /tmp path (symlink/TOCTOU risk
+# in shared /tmp, even though this one is only read back by this script).
+UNZIP_TEST_LOG="$(mktemp /tmp/fetch-pack-unzip-test.XXXXXX.log)"
+if ! unzip -t "$DEST" >"$UNZIP_TEST_LOG" 2>&1; then
   log "FATAL: unzip -t reported errors for $DEST"
-  tail -20 /tmp/fetch-pack-unzip-test.log
+  tail -20 "$UNZIP_TEST_LOG"
+  rm -f "$UNZIP_TEST_LOG"
   [ "$OBTAINED" != "path3-staged" ] && rm -f "$DEST"
   exit 4
 fi
-rm -f /tmp/fetch-pack-unzip-test.log
+rm -f "$UNZIP_TEST_LOG"
 
 COMPUTED_SHA="$(sha256sum "$DEST" | awk '{print $1}')"
 

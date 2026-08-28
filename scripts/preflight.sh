@@ -82,7 +82,10 @@ else
   else
     log "temurin-8-jdk NOT FOUND in the Adoptium apt repo for this suite (Pitfall 3) — falling back to the official tarball"
     sudo mkdir -p /opt/temurin-8
-    TARBALL="/tmp/temurin-8-jdk-aarch64.tar.gz"
+    # WR-04: mktemp instead of a fixed, guessable /tmp path — this file is fed
+    # into a root-privileged `sudo tar`, so a predictable name in shared /tmp
+    # is a symlink/TOCTOU setup.
+    TARBALL="$(mktemp /tmp/temurin-8-jdk-aarch64.XXXXXX.tar.gz)"
     # WR-03: unlike every other download path in this repo, the tarball
     # fallback fed straight into a root-owned `sudo tar` extraction with no
     # integrity check. The Adoptium assets API publishes a sha256 alongside
