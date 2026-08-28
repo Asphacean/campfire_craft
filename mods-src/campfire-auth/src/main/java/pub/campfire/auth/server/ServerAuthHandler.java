@@ -132,8 +132,12 @@ public final class ServerAuthHandler {
         }
         UUID uuid = player.getUniqueID();
         PendingJoin pending = PENDING.get(uuid);
-        if (pending == null) {
-            // Already resolved (timed out or a duplicate/late packet) — ignore.
+        if (pending == null || pending.validating) {
+            // Already resolved (timed out or a duplicate/late packet), or a
+            // validation call is already in flight for this join (WR-02) —
+            // ignore. Without this guard an unbounded number of response
+            // packets during the pending window could each spawn their own
+            // HTTP validate call and race each other to resolve the join.
             return;
         }
 
@@ -144,6 +148,7 @@ public final class ServerAuthHandler {
             return;
         }
 
+        pending.validating = true;
         validateAsync(ownNick, token, uuid);
     }
 
@@ -244,6 +249,11 @@ public final class ServerAuthHandler {
         final GameType previousGameType;
         final double posX, posY, posZ;
         final float yaw, pitch;
+        // WR-02: set once the first AuthResponseMessage is accepted, so any
+        // further packet for this join is ignored rather than spawning a
+        // second, racing validate call. Only ever read/written on the main
+        // thread (all PENDING access is), so no synchronization is needed.
+        boolean validating = false;
 
         PendingJoin(long joinTimeMillis, GameType previousGameType,
                     double posX, double posY, double posZ, float yaw, float pitch) {
