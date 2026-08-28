@@ -48,6 +48,18 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
+# WR-07: rlcraft.service runs as User=asphacean. This script needs `sudo` for
+# the systemctl stop/start calls inside it, but must NOT itself be run under
+# `sudo scripts/restore.sh` as a whole — a very natural mistake given the
+# systemctl calls also need sudo — because that would run the mv/tar -x
+# extraction as root, leaving server/world/* root-owned and only surfacing as
+# a startup failure/corruption the next time rlcraft.service starts as
+# asphacean, well after the restore already reported success.
+if [[ "$(id -un)" != "asphacean" ]]; then
+  echo "FATAL: run this as asphacean, not root/sudo (systemctl calls inside will prompt for sudo as needed)" >&2
+  exit 1
+fi
+
 # shellcheck source=/dev/null
 source "$ROOT_DIR/server.env"
 : "${BACKUP_DIR:?BACKUP_DIR not set in server.env}"
