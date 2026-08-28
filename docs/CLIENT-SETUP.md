@@ -69,7 +69,7 @@ skipped, or has expired) — it is not a whitelist rejection.
 This hand-install token flow is a **stopgap** until the Phase-4 launcher
 does it automatically for you. Right now, you are the launcher:
 
-1. **Add the mod.** Put `campfire-auth-0.1.0.jar` into your RLCraft
+1. **Add the mod.** Put `campfire-auth-0.1.1.jar` into your RLCraft
    instance's `mods/` folder, alongside the rest of the RLCraft mods (ask
    the operator for the jar — it's the same one running on the server).
 2. **Register once.** Ask the operator to create your account (nick +

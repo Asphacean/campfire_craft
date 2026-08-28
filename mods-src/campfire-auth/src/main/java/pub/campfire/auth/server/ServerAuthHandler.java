@@ -173,6 +173,19 @@ public final class ServerAuthHandler {
                 int status = conn.getResponseCode();
                 valid = status == 200;
                 failureReason = valid ? null : "invalid_token";
+                // WR-05: fully drain and close the response so
+                // HttpURLConnection can return this connection to its
+                // keep-alive pool instead of opening a fresh socket per
+                // join (or leaking one under sustained load).
+                try (java.io.InputStream is = valid ? conn.getInputStream() : conn.getErrorStream()) {
+                    if (is != null) {
+                        while (is.read() != -1) {
+                            // drain
+                        }
+                    }
+                } finally {
+                    conn.disconnect();
+                }
             } catch (Exception e) {
                 valid = false;
                 failureReason = "service_error";

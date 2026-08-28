@@ -30,7 +30,7 @@ This is also the fix for the "my stuff is gone" support case below.
 Enforcement is undone with one file deletion and one restart:
 
 ```
-rm server/mods/campfire-auth-0.1.0.jar
+rm server/mods/campfire-auth-0.1.1.jar
 sudo systemctl restart rlcraft
 ```
 
