@@ -91,3 +91,9 @@ Items acknowledged and deferred at milestone close, most recent first:
 Last session: 2026-08-27
 Stopped at: ROADMAP.md and STATE.md created; requirements traceability filled
 Resume file: None
+
+## Deferred Verification
+
+| Phase | State | Resume |
+|-------|-------|--------|
+| 1 | verification_deferred_human | /gsd-verify-work 1 |
