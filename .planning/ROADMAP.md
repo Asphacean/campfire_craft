@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. With 3 players online simultaneously, measured TPS stays at or above 15
   4. A scheduled backup has been restored into a running server, and the restored world loads with player progress intact
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -51,7 +51,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Reachable by domain from outside, DNS following the public IP, TPS measured under 3-player load, client setup doc (SRV-04, SRV-05)
+- [x] 01-04-PLAN.md — Reachable by domain from outside, DNS following the public IP, TPS measured under 3-player load, client setup doc (SRV-04, SRV-05)
 
 ### Phase 2: Accounts & Enforced Auth
 
@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Playable Server on the Pi | 3/4 | In Progress|  |
+| 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 0/TBD | Not started | - |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
