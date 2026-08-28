@@ -159,3 +159,8 @@ Applicable state considerations resolved: 13 covered, 2 backstop, 0 unresolved.
 - [ ] Dimension 6 Registry Safety: PASS
 
 **Approval:** pending
+
+## Visual Hierarchy
+
+**Focal point: the Play button** — 48px tall, sole `#E08A3E` fill, centred below the progress bar, exposed by the form collapsing after login.
+Secondary: RAM slider and the nick/password form. Tertiary: "Game folder" / "Verify files", status pill and version footer (chrome, 4px padding, muted).
