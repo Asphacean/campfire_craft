@@ -1,0 +1,265 @@
+/* 04-UI-SPEC.md tokens, declared as CSS custom properties before any
+   component exists (task 1). Components consume these vars, never a
+   hardcoded literal, so the whole visual contract lives in one place. */
+:root {
+  /* Spacing scale (04-UI-SPEC.md "Spacing Scale") */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px; /* not used at this window size — declared for scale completeness only */
+
+  /* Typography ("Typography" table: size / weight / line-height) */
+  --font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --text-body-size: 16px;
+  --text-body-weight: 400;
+  --text-body-line: 1.5;
+  --text-label-size: 14px;
+  --text-label-weight: 400;
+  --text-label-line: 1.4;
+  --text-heading-size: 20px;
+  --text-heading-weight: 600;
+  --text-heading-line: 1.2;
+  --text-display-size: 28px;
+  --text-display-weight: 600;
+  --text-display-line: 1.2;
+
+  /* Color ("Color" table) */
+  --color-dominant: #14110F; /* fallback background if no art asset ships */
+  --color-panel: #1C1815;
+  --color-panel-opacity: 0.82;
+  --color-accent: #E08A3E; /* Play fill, RAM-slider thumb/track, online dot, focus ring */
+  --color-destructive: #C6433D; /* error banner, RAM warning, offline dot */
+  --color-text: #f2ece6;
+  --color-text-muted: #b9b0a6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 480px;
+  height: 560px;
+  overflow: hidden;
+  font-family: var(--font-family);
+  color: var(--color-text);
+  background: var(--color-dominant);
+}
+
+/* Every focusable element: 2px solid accent outline, 2px offset (Accessibility
+   Basics — visible on both the art background and the dark panel). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+#background {
+  position: absolute;
+  inset: 0;
+  background: var(--color-dominant);
+  /* RLCraft art background is a build-time asset added in a later wave;
+     the flat fallback color holds the contract unchanged either way. */
+  z-index: 0;
+}
+
+.wordmark {
+  font-size: var(--text-display-size);
+  font-weight: var(--text-display-weight);
+  line-height: var(--text-display-line);
+  text-align: center;
+  margin-bottom: var(--space-md);
+}
+
+.status-pill {
+  position: absolute;
+  top: var(--space-xs);
+  left: var(--space-lg);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-line);
+  color: var(--color-text-muted);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted); /* checking: neutral gray */
+}
+
+.status-pill[data-state="online"] .status-dot {
+  background: var(--color-accent);
+}
+
+.status-pill[data-state="offline"] .status-dot {
+  background: var(--color-destructive);
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  margin: var(--space-lg);
+  padding: var(--space-md);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-panel) calc(var(--color-panel-opacity) * 100%), transparent);
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  border-left: 3px solid var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 18%, transparent);
+  color: var(--color-destructive);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  max-width: 100%;
+  max-height: calc(var(--text-label-line) * var(--text-label-size) * 2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.field-label {
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-line);
+  color: var(--color-text-muted);
+}
+
+.auth-form input[type="text"],
+.auth-form input[type="password"] {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  line-height: var(--text-body-line);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 6px;
+  border: 1px solid var(--color-text-muted);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--color-text);
+}
+
+.auth-buttons {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.btn {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  line-height: var(--text-body-line);
+  border-radius: 6px;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-secondary {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+}
+
+.btn-accent {
+  width: 100%;
+  height: var(--space-2xl); /* Play button, 48px — the single most-pressed control */
+  background: var(--color-accent);
+  color: #14110F;
+  font-weight: 600;
+  margin-top: var(--space-xl);
+}
+
+.btn-text {
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-label-size);
+}
+
+.session-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+
+.heading-text {
+  font-size: var(--text-heading-size);
+  font-weight: var(--text-heading-weight);
+  line-height: var(--text-heading-line);
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ram-block {
+  margin-top: var(--space-md);
+}
+
+.ram-warning {
+  color: var(--color-destructive);
+  font-size: var(--text-label-size);
+  margin-top: var(--space-xs);
+}
+
+.progress-area {
+  margin-top: var(--space-xl);
+}
+
+.step-label {
+  font-size: var(--text-body-size);
+  margin-bottom: var(--space-xs);
+}
+
+.secondary-buttons {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.version-footer {
+  margin-top: var(--space-md);
+  font-size: var(--text-label-size);
+  color: var(--color-text-muted);
+  text-align: center;
+}

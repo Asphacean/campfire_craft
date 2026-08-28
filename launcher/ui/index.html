@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>campfire.pub</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="background"></div>
+
+    <div id="status-pill" class="status-pill" data-state="checking">
+      <span class="status-dot"></span>
+      <span class="status-text">Checking…</span>
+    </div>
+
+    <main class="panel">
+      <div id="wordmark" class="wordmark">campfire.pub</div>
+
+      <div id="error-banner" class="error-banner" hidden>
+        <span id="error-text"></span>
+        <button id="open-log-btn" type="button" class="link-btn">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+            <path d="M5 7h6M5 9.5h6M5 12h4" stroke="currentColor" stroke-width="1.2" />
+          </svg>
+          Open log
+        </button>
+      </div>
+
+      <form id="auth-form" class="auth-form">
+        <label class="field-label" for="nick-input">Nickname</label>
+        <input
+          id="nick-input"
+          name="nick"
+          type="text"
+          maxlength="16"
+          pattern="[A-Za-z0-9_]{3,16}"
+          autocomplete="username"
+        />
+
+        <label class="field-label" for="password-input">Password</label>
+        <input
+          id="password-input"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+        />
+
+        <div class="auth-buttons">
+          <button id="login-btn" type="submit" class="btn btn-secondary">Log in</button>
+          <button id="register-btn" type="button" class="btn btn-secondary">
+            Create account
+          </button>
+        </div>
+      </form>
+
+      <div id="session-line" class="session-line" hidden>
+        <span class="label-text">Playing as</span>
+        <strong id="session-nick" class="heading-text"></strong>
+        <button id="logout-btn" type="button" class="link-btn">· Log out</button>
+      </div>
+
+      <div id="ram-block" class="ram-block" hidden>
+        <label class="field-label" for="ram-slider">Memory</label>
+        <input id="ram-slider" type="range" min="3" max="10" step="0.5" />
+        <div id="ram-warning" class="ram-warning" hidden></div>
+      </div>
+
+      <div id="progress-area" class="progress-area" hidden>
+        <div id="step-label" class="step-label"></div>
+        <progress id="progress-bar" value="0" max="100"></progress>
+      </div>
+
+      <button id="play-btn" class="btn btn-accent" hidden disabled>Play</button>
+
+      <div class="secondary-buttons">
+        <button id="game-folder-btn" type="button" class="btn btn-text">Game folder</button>
+        <button id="verify-files-btn" type="button" class="btn btn-text">Verify files</button>
+      </div>
+
+      <div id="version-footer" class="version-footer">Launcher · Pack</div>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

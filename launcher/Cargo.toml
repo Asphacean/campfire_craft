@@ -1,0 +1,15 @@
+# campfire-launcher workspace.
+#
+# Every cargo command against this workspace is spelled `~/.cargo/bin/cargo`
+# (the rustup shim, resolved by `launcher/rust-toolchain.toml`), never the
+# bare `cargo`/`rustc` on PATH — those still resolve to the apt-packaged
+# 1.85.0 toolchain that auth-service builds against and which cannot compile
+# Tauri 2 (RESEARCH.md Pitfall 1: real MSRV is 1.88, not Tauri's declared
+# 1.77.2). This convention holds for every plan in this phase.
+[workspace]
+resolver = "2"
+members = ["core", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"

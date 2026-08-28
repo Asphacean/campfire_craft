@@ -1,0 +1,14 @@
+[package]
+name = "campfire-launcher-core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "campfire_launcher_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "campfire-cli"
+path = "src/bin/campfire-cli.rs"
+
+[dependencies]

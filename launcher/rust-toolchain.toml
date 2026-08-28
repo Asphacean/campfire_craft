@@ -1,0 +1,14 @@
+# Scoped to this workspace only (launcher/) — the apt-packaged rustc 1.85.0
+# that auth-service builds against is untouched. Every command in this whole
+# phase is spelled `~/.cargo/bin/cargo` (the rustup shim), never the bare
+# `cargo`/`rustc` on PATH, which still resolve to the apt toolchain.
+#
+# Pinned to an explicit version, not the floating "stable" channel name:
+# RESEARCH.md Pitfall 1 measured Tauri 2.11's real transitive MSRV at 1.88
+# (via icu_*/plist/time/darling) despite Tauri's own declared 1.77.2 — a
+# floating pin would make a future rebuild non-reproducible if stable moves
+# again. 1.98.0 is what `rustup show` reported as current stable on this Pi
+# on 2026-08-28, well above the 1.88 floor.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
