@@ -51,6 +51,13 @@ keyring = { version = "3", default-features = false, features = ["apple-native",
 # distinctly so using the wrong one reads as obviously wrong (04-RESEARCH.md
 # Standard Stack, Package Legitimacy Audit: OK/Approved).
 sha1_smol = "1"
+# The offline-UUID algorithm (`UUID.nameUUIDFromBytes`) is a raw MD5 digest
+# with the version/variant bits patched in — not in RESEARCH.md's package
+# audit (that only covers sha1_smol), added here because the nick-casing
+# rule (D-16) is a correctness/security requirement and a maintained
+# RustCrypto crate (same publisher/org as the already-audited `sha2`) beats
+# hand-rolling MD5 for an identity-bearing computation.
+md-5 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # sysctlbyname("sysctl.proc_translated") for Rosetta detection — macOS only,

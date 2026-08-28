@@ -14,6 +14,7 @@ pub mod auth;
 pub mod forge;
 pub mod http;
 pub mod java;
+pub mod launch;
 pub mod log;
 pub mod manifest;
 pub mod mojang;

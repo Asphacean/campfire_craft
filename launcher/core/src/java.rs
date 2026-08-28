@@ -191,7 +191,12 @@ fn to_hex(bytes: &[u8]) -> String {
 /// `path`/`url`: a third-party archive's entry names are exactly as
 /// untrusted as a remote manifest's paths, and a crafted entry name is the
 /// classic way to escape the extraction directory.
-fn assert_safe_archive_entry(name: &str) -> Result<(), JavaError> {
+///
+/// `pub(crate)`: `launch.rs` reuses this exact guard for natives-archive
+/// extraction (T-04-03-04) rather than growing a second copy — a Java
+/// runtime archive and a natives jar are the same kind of untrusted
+/// third-party zip, extracted the same unsafe way if this check is skipped.
+pub(crate) fn assert_safe_archive_entry(name: &str) -> Result<(), JavaError> {
     let normalized = name.replace('\\', "/");
     if normalized.starts_with('/') || normalized.split('/').any(|c| c == "..") {
         return Err(JavaError::Extract(format!(

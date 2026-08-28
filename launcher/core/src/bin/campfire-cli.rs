@@ -12,10 +12,11 @@
 //!   campfire-cli pin-check
 
 use std::io::Read;
+use std::path::PathBuf;
 
-use campfire_launcher_core::{auth, forge, http, java, manifest, mojang, progress::Progress, status};
+use campfire_launcher_core::{auth, forge, http, java, launch, manifest, mojang, progress::Progress, status};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n              launch-cmd --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              launch --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -35,6 +36,17 @@ fn take_dir_override(args: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// Removes `flag` and its following value from `args`, if present.
+fn take_flag_value(args: &mut Vec<String>, flag: &str) -> Option<String> {
+    let pos = args.iter().position(|a| a == flag)?;
+    if pos + 1 >= args.len() {
+        return None;
+    }
+    let value = args.remove(pos + 1);
+    args.remove(pos);
+    Some(value)
 }
 
 fn print_progress(p: Progress) {
@@ -100,6 +112,8 @@ async fn main() {
         "java-probe" => cmd_java_probe(),
         "vanilla" => cmd_vanilla().await,
         "forge" => cmd_forge().await,
+        "launch-cmd" => cmd_launch_cmd(&mut args, false).await,
+        "launch" => cmd_launch_cmd(&mut args, true).await,
         _ => usage(),
     }
 }
@@ -352,6 +366,84 @@ async fn cmd_forge() {
     }
 }
 
+/// Resolves the java path for `launch-cmd`/`launch` via the real
+/// `java::ensure_java` pipeline — `--target` overrides `detect_target()`,
+/// which has no Linux entry; on this dev Pi (no shipped Linux target) this
+/// defaults to `windows-x64` purely to exercise the identical production
+/// code path a real Windows machine's own `detect_target()` would take.
+async fn resolve_cli_java(target_arg: Option<&str>) -> java::Target {
+    match target_arg.and_then(java::Target::parse) {
+        Some(t) => t,
+        None => java::detect_target().unwrap_or(java::Target::WindowsX64),
+    }
+}
+
+async fn cmd_launch_cmd(args: &mut Vec<String>, spawn_it: bool) {
+    let nick = take_flag_value(args, "--nick").unwrap_or_else(|| usage());
+    let ram: u32 = take_flag_value(args, "--ram")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| usage());
+    let token = take_flag_value(args, "--token").unwrap_or_else(|| "0".to_string());
+    let target_arg = take_flag_value(args, "--target");
+
+    // Vanilla + Forge must already be bootstrapped (`vanilla`/`forge`
+    // subcommands) — `launch-cmd` only builds the command line from what's
+    // already on disk, matching the "one function per wave-4 step" split.
+    if let Err(e) = mojang::load_version_json() {
+        eprintln!("FATAL: no vanilla install found — run `campfire-cli vanilla` first: {e:?}");
+        std::process::exit(1);
+    }
+    // `noop_sink`, not `print_progress`: `launch-cmd`'s stdout is the argv,
+    // one element per line, and is redirected straight into acceptance
+    // checks — this call is expected to be the already-installed fast path
+    // (progress spam would land in the same stream as the argv otherwise).
+    let (_, merged) = match forge::ensure_forge(&campfire_launcher_core::progress::noop_sink).await {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FATAL: forge not installed — run `campfire-cli forge` first: {e:?}");
+            std::process::exit(1);
+        }
+    };
+
+    let target = resolve_cli_java(target_arg.as_deref()).await;
+    let java_path: PathBuf = match java::ensure_java(target).await {
+        Ok(p) => p.java_path,
+        Err(e) => {
+            eprintln!("FATAL: java resolution failed: {e:?}");
+            std::process::exit(1);
+        }
+    };
+
+    launch::seed_server_list();
+
+    let session = auth::Session {
+        nick,
+        token,
+        expires: 0,
+    };
+    let argv = match launch::build_launch_command(&session, ram, &merged, &java_path, true) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("FATAL: build_launch_command failed: {e:?}");
+            std::process::exit(1);
+        }
+    };
+
+    for arg in &argv {
+        println!("{arg}");
+    }
+
+    if spawn_it {
+        match launch::spawn(&argv) {
+            Ok(child) => println!("spawned pid={}", child.id()),
+            Err(e) => {
+                eprintln!("FATAL: spawn failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 fn cmd_java_probe() {
     match java::read_marker() {
         Some((release, target, path)) => {
@@ -370,3 +462,4 @@ fn cmd_java_probe() {
         }
     }
 }
+
