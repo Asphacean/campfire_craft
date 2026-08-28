@@ -96,4 +96,5 @@ Resume file: None
 
 | Phase | State | Resume |
 |-------|-------|--------|
+| 2 | verification_deferred_human | /gsd-verify-work 2 — operator: run after launcher exists (needs real client) |
 | 1 | verification_deferred_human | /gsd-verify-work 1 — operator: run after launcher exists; router confirmed only 25565 forwarded |
