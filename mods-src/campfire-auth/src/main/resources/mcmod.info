@@ -1,0 +1,10 @@
+[
+  {
+    "modid": "campfireauth",
+    "name": "Campfire Auth",
+    "description": "Enforces launcher-issued token authentication on join for the campfire.pub server.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "authorList": ["campfire.pub"]
+  }
+]

@@ -1,0 +1,65 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        jcenter()
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '2.3-SNAPSHOT', changing: true
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle.forge'
+
+version = '0.1.0'
+group = 'pub.campfire.auth'
+archivesBaseName = 'campfire-auth'
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+// The kick message (D-15) is half Cyrillic — a platform-default source
+// encoding would turn it into mojibake in the compiled class file's
+// constant pool, a defect that only shows up in front of a player.
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+minecraft {
+    // Live server (SERVER_JAR in server.env) runs 1.12.2-14.23.5.2860.
+    // Build-time dependency is pinned to 14.23.5.2847 instead — verified
+    // live: Forge stopped publishing the FG2-required "-userdev.jar"
+    // artifact after build 2847 in this 14.23.5.x branch (2848 through our
+    // runtime target 2860, and even the "latest" 2864, publish only the
+    // FG3-only "-userdev3.jar"/"-mdk.zip" formats). This is a genuine
+    // ForgeGradle-2.x/Forge-artifact incompatibility present on every
+    // architecture, not an aarch64-specific issue (confirmed: the official
+    // net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT coordinate AND the
+    // anatawa12 FG2.3 fork both fail identically against 2860 — the fork's
+    // own maintainer confirms upstream 2847 as the last FG2-buildable
+    // release, see mods-src/campfire-auth's git history/SUMMARY for the
+    // live evidence). 2847 and 2860 are 13 builds apart within the same
+    // 14.23.5.x patch branch — Forge's own promotion of 2859 as
+    // "recommended" and 2864 as "latest" for this exact branch confirms no
+    // modder-facing FML/Forge API break across this range; this mod uses
+    // only long-stable public API (SimpleNetworkWrapper, GameType,
+    // PlayerEvent) untouched since early 1.12.2. Runtime compatibility is
+    // therefore build-tooling-only, not a functional risk.
+    version = "1.12.2-14.23.5.2847"
+    runDir = "run"
+    mappings = "stable_39"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version': project.version, 'mcversion': project.minecraft.version
+    }
+
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
