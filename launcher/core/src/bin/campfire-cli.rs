@@ -13,9 +13,9 @@
 
 use std::io::Read;
 
-use campfire_launcher_core::{auth, http, java, manifest, mojang, progress::Progress, status};
+use campfire_launcher_core::{auth, forge, http, java, manifest, mojang, progress::Progress, status};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -99,6 +99,7 @@ async fn main() {
         }
         "java-probe" => cmd_java_probe(),
         "vanilla" => cmd_vanilla().await,
+        "forge" => cmd_forge().await,
         _ => usage(),
     }
 }
@@ -322,6 +323,30 @@ async fn cmd_vanilla() {
         }
         Err(e) => {
             eprintln!("FATAL: vanilla failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn cmd_forge() {
+    match forge::ensure_forge(&print_progress).await {
+        Ok((report, merged)) => {
+            println!(
+                "installer_sha256_ok={} already_installed={} version={} merged_libraries={} classpath_len={}",
+                report.installer_hash_verified,
+                report.already_installed,
+                report.version_id,
+                report.merged_library_count,
+                report.classpath_len
+            );
+            if report.already_installed {
+                println!("already installed — installer skipped");
+            }
+            let _ = merged;
+            println!("OK");
+        }
+        Err(e) => {
+            eprintln!("FATAL: forge failed: {e:?}");
             std::process::exit(1);
         }
     }

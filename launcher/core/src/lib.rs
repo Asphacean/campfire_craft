@@ -11,6 +11,7 @@
 //! token handoff, seeded server list).
 
 pub mod auth;
+pub mod forge;
 pub mod http;
 pub mod java;
 pub mod log;

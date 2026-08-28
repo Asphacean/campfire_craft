@@ -149,6 +149,13 @@ pub struct AssetIndexRef {
     pub url: String,
 }
 
+/// Shared by both the vanilla version JSON (which always carries
+/// `downloads`/`assetIndex`) and Forge's produced child JSON (which
+/// carries neither — [VERIFIED: this session] it only redefines `id`,
+/// `mainClass`, `inheritsFrom`, `minecraftArguments` and `libraries`,
+/// leaning entirely on its `inheritsFrom` parent for the rest). Both
+/// fields are therefore optional here; `forge.rs`'s merge always reads
+/// them from the parent, never the child.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionJson {
@@ -158,8 +165,10 @@ pub struct VersionJson {
     pub main_class: String,
     #[serde(default)]
     pub minecraft_arguments: Option<String>,
-    pub asset_index: AssetIndexRef,
-    pub downloads: Downloads,
+    #[serde(default)]
+    pub asset_index: Option<AssetIndexRef>,
+    #[serde(default)]
+    pub downloads: Option<Downloads>,
     #[serde(default)]
     pub libraries: Vec<Library>,
 }
@@ -457,6 +466,10 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
         total: 4,
     });
     let version = ensure_version_json(&client).await?;
+    let downloads = version
+        .downloads
+        .as_ref()
+        .ok_or_else(|| MojangError::Json(format!("{} has no downloads.client", version.id)))?;
 
     sink(Progress::Step {
         name: "Fetching client jar".to_string(),
@@ -465,8 +478,7 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
     });
     let jar_dest = versions_dir().join(&version.id).join(format!("{}.jar", version.id));
     let mut bytes_downloaded =
-        download_sha1_verified(&client, &version.downloads.client.url, &jar_dest, &version.downloads.client.sha1)
-            .await?;
+        download_sha1_verified(&client, &downloads.client.url, &jar_dest, &downloads.client.sha1).await?;
 
     // --- Libraries + natives, rule-filtered for the current platform ---
     let os_name = current_os_name();
@@ -515,14 +527,18 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
         current: 3,
         total: 4,
     });
-    let index_bytes = fetch_bytes(&client, &version.asset_index.url).await?;
+    let asset_index = version
+        .asset_index
+        .as_ref()
+        .ok_or_else(|| MojangError::Json(format!("{} has no assetIndex", version.id)))?;
+    let index_bytes = fetch_bytes(&client, &asset_index.url).await?;
     let actual_index_sha1 = sha1_hex(&index_bytes);
-    if actual_index_sha1 != version.asset_index.sha1 {
+    if actual_index_sha1 != asset_index.sha1 {
         return Err(MojangError::HashMismatch {
-            what: format!("asset index {}", version.asset_index.id),
+            what: format!("asset index {}", asset_index.id),
         });
     }
-    let index_path = assets_dir().join("indexes").join(format!("{}.json", version.asset_index.id));
+    let index_path = assets_dir().join("indexes").join(format!("{}.json", asset_index.id));
     write_atomic(&index_path, &index_bytes)?;
     let index: AssetIndexFile = serde_json::from_slice(&index_bytes).map_err(|e| MojangError::Json(e.to_string()))?;
 
@@ -554,7 +570,7 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
         libraries_included,
         libraries_excluded,
         natives_resolved,
-        asset_index_id: version.asset_index.id,
+        asset_index_id: asset_index.id.clone(),
         asset_object_count,
         bytes_downloaded,
     })
