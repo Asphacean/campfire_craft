@@ -52,19 +52,53 @@ RLCraft is heavy. Before launching:
 3. Server address: `mc.campfire.pub:25565`
 4. Save, then double-click the server entry to connect.
 
-## 5. Whitelist status (read this before asking why you can't join)
+## 5. Registration and tokens (Phase 2 — read this before asking why you can't join)
 
-As of Phase 1, the server has **no whitelist** — access is open to anyone
-who can reach `mc.campfire.pub:25565` with the correct client version. You
-do not need your nickname added by the operator to join right now.
+As of Phase 2, the server has **no whitelist**, but it does require a
+valid, freshly-minted token on every join — a client that connects without
+one is turned away before it can move, break a block, or chat, with this
+message:
+
+```
+Зайди через лаунчер campfire.pub / Join via the campfire.pub launcher
+```
+
+If you see that message, it means the token step below wasn't done (or was
+skipped, or has expired) — it is not a whitelist rejection.
+
+This hand-install token flow is a **stopgap** until the Phase-4 launcher
+does it automatically for you. Right now, you are the launcher:
+
+1. **Add the mod.** Put `campfire-auth-0.1.0.jar` into your RLCraft
+   instance's `mods/` folder, alongside the rest of the RLCraft mods (ask
+   the operator for the jar — it's the same one running on the server).
+2. **Register once.** Ask the operator to create your account (nick +
+   password), or do it yourself if self-registration is open — use the
+   **exact capitalisation** you intend to always play under. The game
+   derives your player ID from the exact letters of your nick, so `Steve`
+   and `steve` are two different players with two different inventories.
+   Getting the casing wrong looks like your world/inventory going missing.
+3. **Get a token before every join.** The operator mints one with
+   `campfire-auth login <YourNick>` (one CLI call on the Pi) and gives you
+   the printed value. A token is **single-use** and expires after 12
+   hours — you need a fresh one for every single connection, not just the
+   first one.
+4. **Add two JVM arguments** to your launcher profile before connecting:
+   `-Dcampfire.nick=<YourNick>` and `-Dcampfire.token=<the token>`. In the
+   CurseForge app this is under the profile's **Options** → advanced/JVM
+   arguments field, alongside the memory settings from step 3 above.
+5. **Connect as normal.** You may float in place, unable to act, for up to
+   a few seconds while the server checks your token — that's expected.
+   Then you're in.
+
+A friend who has not registered yet cannot join at all, no matter what
+JVM flags they set — registration has to happen first, and only the
+operator can do it right now (or you, if self-registration is open; ask).
 
 This is a deliberate, temporary decision (see `01-01-SUMMARY.md`, D-09
-override) and it will not last — Phase 2 replaces open access with proper
-token-based authentication tied to the future launcher. If a future
-whitelist is ever turned back on, a non-whitelisted nickname will be
-refused at login with an on-screen message before you can move or interact
-in the world — if you ever see that message, ask the operator to add your
-nickname.
+override, and `02-CONTEXT.md`) and it will not last — Phase 4's launcher
+handles all of the above (registration, login, minting a token per join)
+automatically, with no manual JVM flags.
 
 ## 6. If something fails
 
