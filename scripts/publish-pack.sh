@@ -359,6 +359,16 @@ finish_tree() {
   log "Pack tree: $mod_count mods, $rp_count resourcepacks, $cfg_count config files, $tree_size total"
 }
 
+publish_manifest() {
+  log "Generating manifest..."
+  local rc=0
+  python3 "$REPO_ROOT/scripts/gen-manifest.py" "$PACK_DIR" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "FATAL: manifest generation failed (exit $rc)"
+    exit 5
+  fi
+}
+
 main() {
   check_disk_space
 
@@ -373,6 +383,8 @@ main() {
 
   overlay_own_content
   finish_tree
+  publish_manifest
+  log "Confirm the new manifest is live: curl -s --cacert ca/campfire-ca.pem https://mc.campfire.pub:${HTTPS_PORT:-8444}/manifest.json | jq '.pack_version, (.files|length), (.delete|length)'"
 }
 
 main
