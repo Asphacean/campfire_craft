@@ -135,8 +135,12 @@ fi
 # ---------------------------------------------------------------------------
 # Step 5: ops tooling (zstd, unzip, curl, jq)
 # ---------------------------------------------------------------------------
-log "Ensuring zstd, unzip, curl, jq are installed"
-sudo apt-get install -y -qq zstd unzip curl jq
+log "Ensuring zstd, unzip, curl, jq, dnsutils are installed"
+# WR-06: dnsutils provides `dig`, which scripts/reachability.sh depends on but
+# this script never installed — on a fresh minimal image that made
+# reachability.sh's DNS check fail with a misleading "DNS did not converge"
+# verdict instead of the real "dig: command not found".
+sudo apt-get install -y -qq zstd unzip curl jq dnsutils
 
 # ---------------------------------------------------------------------------
 # Step 6: rcon-cli (itzg/rcon-cli, aarch64 static binary)

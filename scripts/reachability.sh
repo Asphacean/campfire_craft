@@ -26,6 +26,13 @@ if [[ "$DOMAIN" == "mc.example.com" ]]; then
   exit 1
 fi
 
+# WR-06: fail fast with a clear message rather than letting a missing `dig`
+# masquerade as "DNS did not converge" after the full retry budget.
+if ! command -v dig >/dev/null 2>&1; then
+  echo "FATAL: dig not found — install dnsutils (scripts/preflight.sh does this)" >&2
+  exit 1
+fi
+
 RETRY_BUDGET_SEC=300
 POLL_INTERVAL=15
 
