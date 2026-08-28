@@ -31,6 +31,11 @@ BACKUP_KEEP="${_ENV_BACKUP_KEEP:-$BACKUP_KEEP}"
 : "${RCON_PORT:?RCON_PORT not set in server.env}"
 : "${RCON_PASSWORD:?RCON_PASSWORD not set in server.env}"
 
+# WR-01: mutual exclusion with restore.sh (and overlapping backup.sh runs) —
+# same lock file path as restore.sh.
+exec 9>"$ROOT_DIR/.backup.lock"
+flock -n 9 || { echo "FATAL: another backup/restore run is in progress" >&2; exit 1; }
+
 rcon() {
   # CR-01: never pass RCON_PASSWORD as a CLI flag (visible via ps/proc to any
   # local user) — rcon-cli reads RCON_HOST/RCON_PORT/RCON_PASSWORD from the

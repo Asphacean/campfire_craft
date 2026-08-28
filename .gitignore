@@ -33,3 +33,6 @@ server/structures/
 
 # runtime-regenerated dumps
 server/config/fantasticlib/reference/
+
+# WR-01: flock guard used by backup.sh/restore.sh to prevent concurrent runs
+.backup.lock
