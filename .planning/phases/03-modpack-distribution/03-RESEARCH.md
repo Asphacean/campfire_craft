@@ -513,7 +513,7 @@ curl --cacert ca/campfire-ca.pem https://mc.campfire.pub:8444/status
 
 **If this table is empty:** N/A — see A1–A3 above; none of these block planning, they are forward-looking notes for the executor/Phase 4.
 
-## Open Questions
+## Open Questions (RESOLVED — Q1 deferred to Phase 4 planning input; Q2 handled by skip-with-warning in 03-02 Task 1)
 
 1. **Should `options.txt`/`optionsof.txt` defaults ever reach a fresh client, given the locked manifest schema excludes them entirely?**
    - What we know: The base RLCraft 2.9.3 client zip ships tuned defaults for both files; CONTEXT.md's locked decision excludes `options.txt` from all manifest management.
