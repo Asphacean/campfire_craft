@@ -67,7 +67,7 @@ Plans:
   4. A vanilla Minecraft client with no token, connecting as a registered nick, is kicked with a clear message before it can move or interact
   5. Inspecting the account database shows only argon2/bcrypt hashes — no plaintext passwords anywhere
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -80,7 +80,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — One announced restart arms enforcement on the live server; operator client verification and the ops runbook (AUTH-04, AUTH-05)
+- [x] 02-03-PLAN.md — One announced restart arms enforcement on the live server; operator client verification and the ops runbook (AUTH-04, AUTH-05)
 
 ### Phase 3: Modpack Distribution
 
@@ -137,7 +137,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
-| 2. Accounts & Enforced Auth | 2/3 | In Progress|  |
+| 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 0/TBD | Not started | - |
 | 4. Launcher | 0/TBD | Not started | - |
 | 5. Release to Friends | 0/TBD | Not started | - |
