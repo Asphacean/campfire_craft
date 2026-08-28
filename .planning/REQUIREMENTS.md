@@ -15,8 +15,8 @@
 
 ### Authentication (AUTH)
 
-- [ ] **AUTH-01**: Player can register an account (nick + password) from the launcher; nick uniqueness enforced, password stored hashed (argon2/bcrypt)
-- [ ] **AUTH-02**: Player can log in from the launcher and receive a short-lived session token
+- [x] **AUTH-01**: Player can register an account (nick + password) from the launcher; nick uniqueness enforced, password stored hashed (argon2/bcrypt)
+- [x] **AUTH-02**: Player can log in from the launcher and receive a short-lived session token
 - [ ] **AUTH-03**: Launcher remembers the session (token, never the plaintext password) so the player is not asked for a password every launch
 - [ ] **AUTH-04**: Game server rejects any join whose token is missing or invalid (server-side auth-gate Forge mod validating against the auth service over loopback); vanilla clients cannot join under a registered nick
 - [ ] **AUTH-05**: Client-side auth mod ships in the modpack and transmits the launcher-provided token on join
@@ -79,8 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRV-03 | Phase 1 | Pending |
 | SRV-04 | Phase 1 | Pending |
 | SRV-05 | Phase 1 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 4 | Pending |
 | AUTH-04 | Phase 2 | Pending |
 | AUTH-05 | Phase 2 | Pending |
@@ -101,6 +101,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-03 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 25 total
 - Mapped to phases: 25 ✓
 - Unmapped: 0
