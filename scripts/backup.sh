@@ -114,11 +114,28 @@ else
   echo "INFO: AUTH_DB not set or file missing — archive will be world-only" >&2
 fi
 
-# Step 4: one tar of the whole world/ tree (plus the accounts snapshot
-# staged above, if any), relative paths only.
+# Step 3c: ca/ + caddy/Caddyfile (D-12, Phase 3). Added as a second
+# -C "$ROOT_DIR" root, straight from the repo tree (no staging needed — these
+# are already-static files, unlike the live SQLite DB above), producing
+# ca/... and caddy/Caddyfile members in the SAME archive alongside world/ and
+# auth/ — no second archive file. The CA private key riding along here is an
+# accepted risk (T-03-01-12, threat register, 03-01-PLAN.md): losing it would
+# invalidate every launcher Phase 5 ships, so it must be recoverable.
+# Deliberately does NOT include pack/: hundreds of megabytes, fully
+# reproducible from scripts/publish-pack.sh at any time — including it would
+# blow out BACKUP_KEEP rotations of archive size for zero durability benefit.
+CA_TAR_ARGS=()
+if [[ -d "$ROOT_DIR/ca" ]]; then
+  CA_TAR_ARGS=(-C "$ROOT_DIR" ca caddy/Caddyfile)
+else
+  echo "INFO: $ROOT_DIR/ca not found — archive will not carry CA/Caddyfile material" >&2
+fi
+
+# Step 4: one tar of the whole world/ tree (plus the accounts snapshot and
+# the ca/Caddyfile roots staged/named above, if any), relative paths only.
 TS="$(date -u +%Y%m%d-%H%M%S)"
 ARCHIVE_PATH="$BACKUP_DIR/world-$TS.tar.zst"
-if ! tar --zstd -cf "$ARCHIVE_PATH" -C "$ROOT_DIR/server" world "${AUTH_TAR_ARGS[@]}"; then
+if ! tar --zstd -cf "$ARCHIVE_PATH" -C "$ROOT_DIR/server" world "${AUTH_TAR_ARGS[@]}" "${CA_TAR_ARGS[@]}"; then
   echo "FATAL: tar failed" >&2
   rm -f "$ARCHIVE_PATH"
   ARCHIVE_PATH=""
