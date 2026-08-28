@@ -18,8 +18,8 @@
 - [x] **AUTH-01**: Player can register an account (nick + password) from the launcher; nick uniqueness enforced, password stored hashed (argon2/bcrypt)
 - [x] **AUTH-02**: Player can log in from the launcher and receive a short-lived session token
 - [ ] **AUTH-03**: Launcher remembers the session (token, never the plaintext password) so the player is not asked for a password every launch
-- [ ] **AUTH-04**: Game server rejects any join whose token is missing or invalid (server-side auth-gate Forge mod validating against the auth service over loopback); vanilla clients cannot join under a registered nick
-- [ ] **AUTH-05**: Client-side auth mod ships in the modpack and transmits the launcher-provided token on join
+- [x] **AUTH-04**: Game server rejects any join whose token is missing or invalid (server-side auth-gate Forge mod validating against the auth service over loopback); vanilla clients cannot join under a registered nick
+- [x] **AUTH-05**: Client-side auth mod ships in the modpack and transmits the launcher-provided token on join
 
 ### Client Distribution (DIST)
 
@@ -82,8 +82,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-01 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 4 | Pending |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Complete |
+| AUTH-05 | Phase 2 | Complete |
 | DIST-01 | Phase 3 | Pending |
 | DIST-02 | Phase 3 | Pending |
 | DIST-03 | Phase 3 | Pending |
