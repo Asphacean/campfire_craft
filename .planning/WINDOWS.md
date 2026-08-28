@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 2
 waived_count: 0
 fixed_count: 0
-total_count: 1
-last_updated: 2026-08-27T14:16:06.134Z
+total_count: 2
+last_updated: 2026-08-28T10:56:15.641Z
 ---
 
 # Broken Windows Ledger
@@ -16,6 +16,7 @@ last_updated: 2026-08-27T14:16:06.134Z
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 01 | unrun-verify | scripts/restore.sh |  | restore.sh's 'stop-fails, nothing touched' acceptance criterion was not exercised live (too risky to force on the single live production instance) — the refusal logic exists (systemctl is-active check after stop) but was proven only via a fully valid stop path | open |  | 2026-08-27T14:16:06.134Z |  |
+| 2 | 02 | deviation | scripts/auth-smoke.sh |  | Task 2 (tdd=true): test-extension and implementation were written together rather than as a strict two-commit RED-then-GREEN sequence; RED was verified retroactively by building the Task-1 commit (36c7084) via git archive into a scratch dir and confirming the new assertions (invalid nick, weak password, missing-field 400, flood 429, /status, CLI login) genuinely failed against it before the Task-2 commit landed. | open |  | 2026-08-28T10:56:15.641Z |  |
 
 ````json
 [
@@ -29,6 +30,18 @@ last_updated: 2026-08-27T14:16:06.134Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-27T14:16:06.134Z",
+    "resolved_at": null
+  },
+  {
+    "id": 2,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "scripts/auth-smoke.sh",
+    "line": null,
+    "description": "Task 2 (tdd=true): test-extension and implementation were written together rather than as a strict two-commit RED-then-GREEN sequence; RED was verified retroactively by building the Task-1 commit (36c7084) via git archive into a scratch dir and confirming the new assertions (invalid nick, weak password, missing-field 400, flood 429, /status, CLI login) genuinely failed against it before the Task-2 commit landed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-28T10:56:15.641Z",
     "resolved_at": null
   }
 ]
