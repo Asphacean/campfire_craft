@@ -125,13 +125,13 @@ Plans:
   4. Download and launch show the current step and file/byte progress instead of an unexplained wait
   5. Wrong password, unreachable server, failed Java download and full disk each show a plain-language message naming the log file; server status and launcher self-update work on startup
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: rustup/Tauri toolchain and the Node-free launcher workspace, refresh tokens in the auth service plus the two new Caddy routes, and a real form that logs in against the live server and shows its status (AUTH-03, LNCH-01, LNCH-07)
+- [x] 04-01-PLAN.md — Tracer: rustup/Tauri toolchain and the Node-free launcher workspace, refresh tokens in the auth service plus the two new Caddy routes, and a real form that logs in against the live server and shows its status (AUTH-03, LNCH-01, LNCH-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
-| 4. Launcher | 0/4 | Planned | - |
+| 4. Launcher | 1/4 | In Progress|  |
 | 5. Release to Friends | 0/TBD | Not started | - |
 
 ## Requirement Coverage
