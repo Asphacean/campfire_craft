@@ -12,3 +12,23 @@ name = "campfire-cli"
 path = "src/bin/campfire-cli.rs"
 
 [dependencies]
+# rustls (not native-tls): a pure-Rust TLS stack with no per-OS system
+# store dependency, needed so campfire_client() can disable built-in roots
+# and public_client() can rely on reqwest's own bundled webpki roots —
+# consistent behavior on Windows/macOS/Linux alike.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "webpki-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "time"] }
+directories = "6"
+# RESEARCH.md: pin ^3 (not the current 4.x) — v3's Entry::new/set_password/
+# get_password surface is the only thing this crate needs, and 4.x's
+# modifiers-map API reshuffle buys nothing for one call site. `linux-native`
+# only (no secret-service feature): enabling secret-service alongside it
+# would make keyring's *default* backend selection prefer secret-service,
+# which has no daemon on this Pi (confirmed live) — linux-native's keyutils
+# backend is what RESEARCH.md says makes the credential round trip a real,
+# asserted test here.
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+
+[dev-dependencies]

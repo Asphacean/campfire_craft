@@ -3,7 +3,14 @@
 //! be exercised headlessly (via `campfire-cli` and `cargo test`) without a
 //! display. `src-tauri` is a thin adapter over this crate's public API.
 //!
-//! Filled in across this phase's plans: task 1 (this plan) proves the
-//! workspace builds; task 3 (this plan) adds `http`, `paths`, `auth`,
-//! `status`, `log`, `progress`, `strings`. Later plans add manifest sync,
-//! Java/Forge provisioning, and launch.
+//! This plan (04-01) lands the session tracer: `http`, `paths`, `auth`,
+//! `status`, `log`, `progress`, `strings`. Later plans in this phase add
+//! manifest sync, Java/Forge provisioning, and launch.
+
+pub mod auth;
+pub mod http;
+pub mod log;
+pub mod paths;
+pub mod progress;
+pub mod status;
+pub mod strings;
