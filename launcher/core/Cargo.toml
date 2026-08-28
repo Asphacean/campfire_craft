@@ -46,6 +46,11 @@ tar = "0.4"
 # backend is what RESEARCH.md says makes the credential round trip a real,
 # asserted test here.
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+# Mojang publishes SHA-1 (not SHA-256) for every client jar/library/asset it
+# hosts — a distinct hash domain from the pack manifest's sha2, named
+# distinctly so using the wrong one reads as obviously wrong (04-RESEARCH.md
+# Standard Stack, Package Legitimacy Audit: OK/Approved).
+sha1_smol = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # sysctlbyname("sysctl.proc_translated") for Rosetta detection — macOS only,

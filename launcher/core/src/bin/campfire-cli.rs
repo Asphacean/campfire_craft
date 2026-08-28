@@ -13,9 +13,9 @@
 
 use std::io::Read;
 
-use campfire_launcher_core::{auth, http, java, manifest, progress::Progress, status};
+use campfire_launcher_core::{auth, http, java, manifest, mojang, progress::Progress, status};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -98,6 +98,7 @@ async fn main() {
             cmd_java_fetch(target.as_deref()).await;
         }
         "java-probe" => cmd_java_probe(),
+        "vanilla" => cmd_vanilla().await,
         _ => usage(),
     }
 }
@@ -304,6 +305,28 @@ async fn cmd_java_fetch(target_arg: Option<&str>) {
     }
 }
 
+async fn cmd_vanilla() {
+    match mojang::ensure_vanilla(&print_progress).await {
+        Ok(r) => {
+            println!(
+                "version={} libs_included={} libs_excluded={} natives_resolved={} asset_index={} asset_objects={} bytes={}",
+                r.version_id,
+                r.libraries_included,
+                r.libraries_excluded,
+                r.natives_resolved,
+                r.asset_index_id,
+                r.asset_object_count,
+                r.bytes_downloaded
+            );
+            println!("OK");
+        }
+        Err(e) => {
+            eprintln!("FATAL: vanilla failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn cmd_java_probe() {
     match java::read_marker() {
         Some((release, target, path)) => {
@@ -322,4 +345,3 @@ fn cmd_java_probe() {
         }
     }
 }
-
