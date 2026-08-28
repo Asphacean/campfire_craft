@@ -36,3 +36,9 @@ server/config/fantasticlib/reference/
 
 # WR-01: flock guard used by backup.sh/restore.sh to prevent concurrent runs
 .backup.lock
+
+# campfire-auth (Phase 2): Rust build output (Cargo.lock IS tracked, the
+# lockfile is the supply-chain pin) and the runtime accounts database
+# (D-13: mode 600, contains argon2id hashes, lives outside the repo tree).
+auth-service/target/
+auth/
