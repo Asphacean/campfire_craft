@@ -29,7 +29,7 @@
 #       complete
 #   5 = manifest generation failed
 
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -226,7 +226,7 @@ acquire_client_zip() {
 extract_client_zip() {
   rm -rf "$WORK_DIR"
   mkdir -p "$WORK_DIR"
-  unzip -q "$CLIENT_PACK_ZIP" -d "$WORK_DIR"
+  unzip -q "$CLIENT_PACK_ZIP" -d "$WORK_DIR" || { log "FATAL: unzip of client base zip failed"; exit 3; }
 }
 
 # ---------------------------------------------------------------------------
@@ -350,13 +350,22 @@ extract_overrides() {
     --exclude '/optionsof.txt' \
     --exclude '/*.txt' \
     --exclude 'servers.dat' \
-    "$overrides_dir/" "$PACK_DIR/"
+    "$overrides_dir/" "$PACK_DIR/" || { log "FATAL: overrides rsync failed"; exit 5; }
 }
 
 overlay_own_content() {
-  rsync -a --delete "$REPO_ROOT/server/config/" "$PACK_DIR/config/"
+  rsync -a --delete "$REPO_ROOT/server/config/" "$PACK_DIR/config/" || { log "FATAL: config overlay failed"; exit 5; }
+  # Resolve the jar glob into an array and confirm it actually matched
+  # something BEFORE the old jar is removed (CR-02): if server/mods/ has no
+  # campfire-auth-*.jar (renamed, build not run, wrong version string), the
+  # array's sole element is the literal unexpanded glob pattern, which `-e`
+  # correctly reports as absent — so the run stops here, before `rm -f`, and
+  # the previously-published pack is never left without an auth jar.
+  local jar
+  jar=("$REPO_ROOT"/server/mods/campfire-auth-*.jar)
+  [ -e "${jar[0]}" ] || { log "FATAL: no campfire-auth-*.jar found under server/mods/ — refusing to publish without it"; exit 5; }
   rm -f "$PACK_DIR/mods/campfire-auth-"*.jar
-  cp "$REPO_ROOT"/server/mods/campfire-auth-*.jar "$PACK_DIR/mods/"
+  cp "${jar[@]}" "$PACK_DIR/mods/" || { log "FATAL: campfire-auth jar overlay failed"; exit 5; }
 }
 
 finish_tree() {
