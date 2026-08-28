@@ -24,6 +24,9 @@ const DEFAULT_BIND: &str = "127.0.0.1:8081";
 const REGISTER_LIMIT: usize = 5;
 /// 10 *failed* login attempts/hour/peer.
 const LOGIN_FAIL_LIMIT: usize = 10;
+/// WR-04: 60 *successful* logins/hour/peer — a loose circuit breaker
+/// against runaway automation, not a brute-force control.
+const LOGIN_SUCCESS_LIMIT: usize = 60;
 const RATE_WINDOW: Duration = Duration::from_secs(3600);
 /// Same TTL `/login` uses (D-03) — `campfire-auth login` mints through the
 /// same code path.
@@ -163,6 +166,7 @@ async fn serve() {
         db,
         register_limiter: RateLimiter::new(RATE_WINDOW, REGISTER_LIMIT),
         login_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_FAIL_LIMIT),
+        login_success_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_SUCCESS_LIMIT),
     });
 
     let app = Router::new()

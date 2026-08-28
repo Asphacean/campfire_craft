@@ -182,6 +182,19 @@ impl Db {
         Ok(rows)
     }
 
+    /// Delete consumed or past-TTL token rows (WR-04) — called
+    /// opportunistically on each successful `/login` so the table doesn't
+    /// grow without bound and `/validate`'s per-nick candidate loop doesn't
+    /// get linearly more expensive over time.
+    pub fn prune_tokens(&self, now: i64) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "DELETE FROM tokens WHERE consumed_at IS NOT NULL OR expires_at < ?1",
+            params![now],
+        )?;
+        Ok(())
+    }
+
     /// Atomically consume a token: the `consumed_at IS NULL` predicate makes
     /// this a compare-and-swap, not a check-then-set — the security property
     /// T-02-01-04 depends on. Returns `true` only if exactly one row changed

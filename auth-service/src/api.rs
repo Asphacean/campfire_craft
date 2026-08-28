@@ -23,6 +23,12 @@ pub struct AppState {
     /// 10 *failed* login attempts/hour/peer — successes never count, so
     /// normal launcher use and testing are never throttled.
     pub login_limiter: RateLimiter,
+    /// WR-04: a much looser 60/hour/peer limiter counting *successful*
+    /// logins — purely a circuit breaker against a credential holder
+    /// hammering /login for no reason (each call is a real argon2id hash),
+    /// not a security control against brute force (that's `login_limiter`
+    /// above).
+    pub login_success_limiter: RateLimiter,
     // Peer address comes from `ConnectInfo`, which is the direct TCP peer.
     // Once Phase 3 puts Caddy in front of this service every request will
     // arrive from 127.0.0.1 — Phase 3 must either keep these endpoints
@@ -226,9 +232,22 @@ pub async fn login(
     let user = user.expect("ok implies user was found");
     state.login_limiter.refund(peer.ip());
 
+    // WR-04: a much looser limiter purely as a circuit breaker against
+    // runaway automation from a caller who already knows a valid password
+    // — this is separate from, and does not touch, `login_limiter` above.
+    if !state.login_success_limiter.check(peer.ip()) {
+        return Err(ApiError::RateLimited);
+    }
+
+    let now = crate::db::now_unix();
+    // WR-04: bound `tokens` table growth (and the /validate candidate-loop
+    // cost that grows with it) opportunistically on each successful login,
+    // rather than standing up a background task for a table this small.
+    state.db.prune_tokens(now).map_err(|_| ApiError::Internal)?;
+
     let token = auth::generate_token();
     let token_hash = auth::hash_secret(&token).map_err(|_| ApiError::Internal)?;
-    let expires = crate::db::now_unix() + TOKEN_TTL_SECS;
+    let expires = now + TOKEN_TTL_SECS;
     state
         .db
         .insert_token(user.id, &token_hash, expires)
