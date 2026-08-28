@@ -52,8 +52,13 @@ parse_duration_secs() {
 
 DURATION_ARG="${1:-20m}"
 INTERVAL_ARG="${2:-30s}"
-DURATION_SEC=$(parse_duration_secs "$DURATION_ARG")
-INTERVAL_SEC=$(parse_duration_secs "$INTERVAL_ARG")
+# WR-05: `exit 1` inside parse_duration_secs only terminates the command-
+# substitution subshell — without checking the exit status here, a bad
+# argument silently assigns an empty string, and DURATION_SEC/INTERVAL_SEC
+# treated as 0 in arithmetic below produces a near-instant, silently
+# truncated run instead of the documented usage error.
+DURATION_SEC=$(parse_duration_secs "$DURATION_ARG") || exit 1
+INTERVAL_SEC=$(parse_duration_secs "$INTERVAL_ARG") || exit 1
 
 LOG_DIR="$ROOT_DIR/server/logs"
 mkdir -p "$LOG_DIR"
