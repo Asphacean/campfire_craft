@@ -125,7 +125,7 @@ Plans:
   4. Download and launch show the current step and file/byte progress instead of an unexplained wait
   5. Wrong password, unreachable server, failed Java download and full disk each show a plain-language message naming the log file; server status and launcher self-update work on startup
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 **UI hint**: yes
 
 Plans:
@@ -135,7 +135,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — Manifest sync ported from the Phase 3 reference implementation, and a checksum-verified Java 8 the launcher owns for all three shipped platforms (LNCH-02, LNCH-03, LNCH-05)
+- [x] 04-02-PLAN.md — Manifest sync ported from the Phase 3 reference implementation, and a checksum-verified Java 8 the launcher owns for all three shipped platforms (LNCH-02, LNCH-03, LNCH-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
-| 4. Launcher | 1/4 | In Progress|  |
+| 4. Launcher | 2/4 | In Progress|  |
 | 5. Release to Friends | 0/TBD | Not started | - |
 
 ## Requirement Coverage
