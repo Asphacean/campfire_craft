@@ -32,6 +32,11 @@ futures-util = "0.3"
 # while leaving '/' separators alone — already a locked transitive
 # dependency of `url`/reqwest, promoted to direct for the same reason.
 percent-encoding = "2"
+# Java archive extraction (04-RESEARCH.md Standard Stack, Package
+# Legitimacy Audit: OK/Approved for both).
+zip = "2"
+flate2 = "1"
+tar = "0.4"
 # RESEARCH.md: pin ^3 (not the current 4.x) — v3's Entry::new/set_password/
 # get_password surface is the only thing this crate needs, and 4.x's
 # modifiers-map API reshuffle buys nothing for one call site. `linux-native`
@@ -41,5 +46,10 @@ percent-encoding = "2"
 # backend is what RESEARCH.md says makes the credential round trip a real,
 # asserted test here.
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# sysctlbyname("sysctl.proc_translated") for Rosetta detection — macOS only,
+# so no other platform pays for it (04-RESEARCH.md Pattern 3).
+libc = "0.2"
 
 [dev-dependencies]

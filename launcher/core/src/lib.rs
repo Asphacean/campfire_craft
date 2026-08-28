@@ -5,12 +5,12 @@
 //!
 //! This plan (04-01) lands the session tracer: `http`, `paths`, `auth`,
 //! `status`, `log`, `progress`, `strings`. 04-02 adds `manifest` (the
-//! client pack sync) — `java` (per-platform Java 8 provisioning) lands
-//! later in this same plan. Later plans in this phase add Forge
-//! provisioning and launch.
+//! client pack sync) and `java` (per-platform Java 8 provisioning). Later
+//! plans in this phase add Forge provisioning and launch.
 
 pub mod auth;
 pub mod http;
+pub mod java;
 pub mod log;
 pub mod manifest;
 pub mod paths;

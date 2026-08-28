@@ -13,9 +13,9 @@
 
 use std::io::Read;
 
-use campfire_launcher_core::{auth, http, manifest, progress::Progress, status};
+use campfire_launcher_core::{auth, http, java, manifest, progress::Progress, status};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -89,6 +89,15 @@ async fn main() {
         "pin-check" => cmd_pin_check().await,
         "sync" => cmd_sync().await,
         "verify" => cmd_verify().await,
+        "java-fetch" => {
+            let target = args
+                .iter()
+                .position(|a| a == "--target")
+                .and_then(|pos| args.get(pos + 1))
+                .cloned();
+            cmd_java_fetch(target.as_deref()).await;
+        }
+        "java-probe" => cmd_java_probe(),
         _ => usage(),
     }
 }
@@ -258,6 +267,57 @@ async fn cmd_verify() {
         }
         Err(e) => {
             eprintln!("FATAL: verify failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn cmd_java_fetch(target_arg: Option<&str>) {
+    let target = match target_arg {
+        Some(s) => match java::Target::parse(s) {
+            Some(t) => t,
+            None => {
+                eprintln!("FATAL: unrecognized --target '{s}' (expected windows-x64|mac-x64|mac-arm64)");
+                std::process::exit(1);
+            }
+        },
+        None => match java::detect_target() {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("FATAL: java-fetch failed: {e:?}");
+                std::process::exit(1);
+            }
+        },
+    };
+    println!("target={}", target.as_str());
+    match java::ensure_java(target).await {
+        Ok(p) => {
+            println!("release={}", p.release);
+            println!("link={}", p.link);
+            println!("checksum={}", p.checksum);
+            println!("java={}", p.java_path.display());
+        }
+        Err(e) => {
+            eprintln!("FATAL: java-fetch failed: {e:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_java_probe() {
+    match java::read_marker() {
+        Some((release, target, path)) => {
+            println!("release={release} target={target} java={}", path.display());
+            match std::process::Command::new(&path).arg("-version").output() {
+                Ok(out) => {
+                    print!("{}", String::from_utf8_lossy(&out.stderr));
+                    print!("{}", String::from_utf8_lossy(&out.stdout));
+                }
+                Err(e) => println!("(not runnable on this host: {e})"),
+            }
+        }
+        None => {
+            eprintln!("FATAL: no Java provisioned yet — run java-fetch first");
             std::process::exit(1);
         }
     }
