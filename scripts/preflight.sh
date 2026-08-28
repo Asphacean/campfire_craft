@@ -83,7 +83,27 @@ else
     log "temurin-8-jdk NOT FOUND in the Adoptium apt repo for this suite (Pitfall 3) — falling back to the official tarball"
     sudo mkdir -p /opt/temurin-8
     TARBALL="/tmp/temurin-8-jdk-aarch64.tar.gz"
-    curl -fsSL "https://api.adoptium.net/v3/binary/latest/8/ga/linux/aarch64/jdk/hotspot/normal/eclipse" -o "$TARBALL"
+    # WR-03: unlike every other download path in this repo, the tarball
+    # fallback fed straight into a root-owned `sudo tar` extraction with no
+    # integrity check. The Adoptium assets API publishes a sha256 alongside
+    # the direct download link for the same binary the old /v3/binary/latest
+    # redirect would have served — fetch that metadata first and verify
+    # before trusting the artifact. (jq isn't installed yet at this point in
+    # the script — Step 5 below — so this is parsed with grep, matching the
+    # rest of this script's pre-jq dependency handling.)
+    ASSET_JSON="$(curl -fsSL "https://api.adoptium.net/v3/assets/latest/8/hotspot?architecture=aarch64&image_type=jdk&os=linux&vendor=eclipse")"
+    TARBALL_URL="$(printf '%s' "$ASSET_JSON" | grep -oP '"link"\s*:\s*"\K[^"]+' | head -1)"
+    TARBALL_SHA256="$(printf '%s' "$ASSET_JSON" | grep -oP '"checksum"\s*:\s*"\K[a-f0-9]+' | head -1)"
+    if [ -z "$TARBALL_URL" ] || [ -z "$TARBALL_SHA256" ]; then
+      log "FATAL: Adoptium assets API did not return a download URL/checksum for the Temurin 8 aarch64 tarball"
+      exit 2
+    fi
+    curl -fsSL "$TARBALL_URL" -o "$TARBALL"
+    if ! echo "${TARBALL_SHA256}  ${TARBALL}" | sha256sum -c - >/dev/null 2>&1; then
+      log "FATAL: downloaded Temurin 8 tarball failed sha256 verification against Adoptium's published checksum"
+      rm -f "$TARBALL"
+      exit 2
+    fi
     sudo tar -xzf "$TARBALL" -C /opt/temurin-8 --strip-components=0
     rm -f "$TARBALL"
     RESOLVED_JAVA8_BIN="$(compgen -G '/opt/temurin-8/*/bin/java' | head -1 || true)"
