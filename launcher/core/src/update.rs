@@ -120,6 +120,47 @@ pub async fn check(current_version: &str) -> Option<Available> {
 mod tests {
     use super::*;
 
+    /// Byte-for-byte capture of `curl --cacert ca/campfire-ca.pem
+    /// https://mc.campfire.pub:8444/launcher/latest.json` taken 2026-08-31
+    /// during the Mac UAT bug investigation (`version: "0.1.0"`, matching
+    /// the aarch64 build the operator installed) — a real feed, not a
+    /// synthetic one, per this bug's own regression requirement.
+    const REAL_PRODUCTION_FEED: &str = r#"{
+  "version": "0.1.0",
+  "notes": "Release v0.1.0",
+  "pub_date": "2026-08-30T19:18:29Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://mc.campfire.pub:8444/launcher/Campfire-Launcher_0.1.0_aarch64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUU0V5RVZpSytYZXVKWVp3L29uaVZLL3cwTVY0QkxMQVA3ZkV2dXNodmxGUlI0K212VlF2NFpuTnBDbUo3ZlVzRWYzOTlmTFhvZU9NWE1Pa2oxcEZFOXpxMUpMUHBLbmdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MTE3NTEwCWZpbGU6Q2FtcGZpcmUtTGF1bmNoZXJfMC4xLjBfYWFyY2g2NC5hcHAudGFyLmd6CjY4SG8raWE1dlVpTEI2dFZ2SzVpdnZUem1xT1BETGtZYjlqQ2FvakhONVFnbDArajV3TElaVWlwNWxPUUVOM01GNmVSNkJHSXNMZnhQRHBKdVJFUkJ3PT0K"
+    },
+    "windows-x86_64": {
+      "url": "https://mc.campfire.pub:8444/launcher/Campfire-Launcher_0.1.0_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUU0V5RVZpSytYZWhXeHZFMitsQzkrR0MwaWpTZ1pZWUhwU1N4MGgxYnB5RU9BSmsxL2FPYU1qMmNrM2lzeFlpQkNMY1ZlUEdUSi9DL2F2M3pxbUVvZGRZaDMxOGlKR0FRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MTE3NTEwCWZpbGU6Q2FtcGZpcmUtTGF1bmNoZXJfMC4xLjBfeDY0LXNldHVwLmV4ZQpYQ2JCcE1XdkxKanlMc1hZeWdDazkwaE1LVWRtYWExbzRDaWliSk1VQVpENm9VQndaV05ySEdoVjRGQXZkclA1M1VENW80ZERlUVVkUGJDdUlva3ZDUT09Cg=="
+    },
+    "darwin-x86_64": {
+      "url": "https://mc.campfire.pub:8444/launcher/Campfire-Launcher_0.1.0_x64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUU0V5RVZpSytYZWptU2JhVnBLcDd2VHpyK1h3NHdvZ2hqVzI0a1NBVVpVMS9SUkM3UzJycEhaSWpoNTlocUR1SjFOVmM0NVZzb3pEQXhoSUxySGhaUjBvSi9lOENBbHdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MTE3NTEwCWZpbGU6Q2FtcGZpcmUtTGF1bmNoZXJfMC4xLjBfeDY0LmFwcC50YXIuZ3oKcUJMTXVIY215VTBRRVp4WVBXd3lsTndPSjlnd05ZUGJFRngvNDRZUUdTZE9keTVoVzBFN3VLU3F0TVBHelFFeThycDNuNGRnODlna0p2Q3ByeEdXQkE9PQo="
+    }
+  }
+}"#;
+
+    /// Regression for the Mac UAT report: "Update Available" appeared even
+    /// though the installed build (0.1.0) matched the live feed (0.1.0)
+    /// exactly. Deserializing and comparing against the real captured feed
+    /// proves the core comparison was never the bug — `is_newer` already
+    /// returns `false` for an identical version (see
+    /// `identical_versions_are_not_newer` below); the actual defect was in
+    /// the UI layer (see `launcher/ui/style.css`'s `[hidden]` rule and
+    /// `main.js`'s Update Now handler), not this module.
+    #[test]
+    fn the_real_production_feed_at_0_1_0_reports_no_update_for_a_0_1_0_build() {
+        let feed: Feed =
+            serde_json::from_str(REAL_PRODUCTION_FEED).expect("real feed fixture must deserialize");
+        assert_eq!(feed.version, "0.1.0");
+        assert!(!is_newer("0.1.0", &feed.version));
+    }
+
     #[test]
     fn a_higher_minor_version_is_newer_even_with_a_smaller_string_ordering() {
         // "0.10.0" sorts before "0.9.0" as a plain string — the whole point

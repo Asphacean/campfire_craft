@@ -46,6 +46,20 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute's UA-stylesheet `display: none` is "normal"
+   origin/priority, same as any author rule — origin+importance is
+   resolved before specificity, so an author class rule that sets its own
+   `display` (`.update-overlay`, `.error-banner`, …) always wins the
+   cascade over `[hidden]` alone, regardless of which rule is more
+   specific or comes first. Without this, every element toggled via
+   `.hidden = true/false` in main.js renders unconditionally the moment
+   its class sets `display`. One `!important` rule here is the fix for
+   every such element at once, not a `display: none` special-case bolted
+   onto each toggled class. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;

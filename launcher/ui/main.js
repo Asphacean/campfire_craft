@@ -430,7 +430,7 @@ el.updateNowBtn.addEventListener("click", async () => {
   el.updateNowBtn.disabled = true;
   el.updateLaterBtn.disabled = true;
   el.updateDialogProgress.hidden = false;
-  el.updateDialogProgress.textContent = STRINGS.loadingLaunching;
+  el.updateDialogProgress.textContent = STRINGS.updateDownloading;
 
   const channel = new Channel();
   channel.onmessage = (msg) => {

@@ -61,6 +61,13 @@ pub const UPDATE_DIALOG_TITLE: &str = "Update available";
 pub const UPDATE_BODY_TEMPLATE: &str = "Version {version} is ready.";
 pub const UPDATE_BUTTON_NOW: &str = "Update now";
 pub const UPDATE_BUTTON_LATER: &str = "Later";
+/// The update dialog's own download-progress line — deliberately distinct
+/// from `LOADING_LAUNCHING` ("Launching…", the Play button's label). The
+/// two were conflated in main.js's Update Now handler, which showed
+/// "Launching…" while downloading an update: a copy/paste of the nearest
+/// existing loading string rather than a sentence that describes what the
+/// update dialog is actually doing.
+pub const UPDATE_DOWNLOADING: &str = "Downloading…";
 
 pub const RAM_WARNING: &str = ">70% of your system RAM — this may slow down other apps.";
 
@@ -97,6 +104,7 @@ pub fn as_json() -> serde_json::Value {
         "updateBodyTemplate": UPDATE_BODY_TEMPLATE,
         "updateButtonNow": UPDATE_BUTTON_NOW,
         "updateButtonLater": UPDATE_BUTTON_LATER,
+        "updateDownloading": UPDATE_DOWNLOADING,
         "ramWarning": RAM_WARNING,
         "btnGameFolder": BTN_GAME_FOLDER,
         "btnVerifyFiles": BTN_VERIFY_FILES,
