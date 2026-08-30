@@ -105,6 +105,27 @@ fn rejects_a_delete_entry_with_a_parent_directory_component() {
 }
 
 #[test]
+fn rejects_a_case_varied_never_touch_top_level_file() {
+    let mut entry = base_entry();
+    entry["path"] = serde_json::json!("OPTIONS.TXT");
+    entry["url"] = serde_json::json!("OPTIONS.TXT");
+    assert_rejected("case-varied-top-level-file", vec![entry], vec![]);
+}
+
+#[test]
+fn rejects_a_case_varied_never_touch_directory() {
+    let mut entry = base_entry();
+    entry["path"] = serde_json::json!("Saves/World/level.dat");
+    entry["url"] = serde_json::json!("Saves/World/level.dat");
+    assert_rejected("case-varied-directory", vec![entry], vec![]);
+}
+
+#[test]
+fn rejects_a_case_varied_never_touch_delete_entry() {
+    assert_rejected("case-varied-delete", vec![base_entry()], vec!["Saves/World/level.dat"]);
+}
+
+#[test]
 fn accepts_a_well_formed_manifest() {
     let dir = scratch_game_dir("accepted");
     let bytes = manifest_with(vec![base_entry()], vec!["mods/Removed.jar"]);

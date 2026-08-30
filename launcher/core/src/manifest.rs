@@ -174,6 +174,7 @@ pub fn validate(manifest: &Manifest, game_dir: &Path) -> Result<(), SyncError> {
     for entry in &manifest.files {
         validate_field(&entry.path, &real_dest)?;
         validate_field(&entry.url, &real_dest)?;
+        assert_never_touch(&entry.path)?;
 
         let basename = entry.path.rsplit('/').next().unwrap_or(&entry.path);
         if FORBIDDEN_PREFIXES.iter().any(|p| entry.path.starts_with(p))
@@ -191,6 +192,7 @@ pub fn validate(manifest: &Manifest, game_dir: &Path) -> Result<(), SyncError> {
                 "delete[] entry fails the path guard: {path}"
             )));
         }
+        assert_never_touch(path)?;
     }
     Ok(())
 }
@@ -229,10 +231,21 @@ pub async fn fetch_manifest() -> Result<Manifest, SyncError> {
 /// The second lock: even though the manifest contract already excludes
 /// player state from `files` and `delete`, no write or unlink in this
 /// module ever touches one of these paths regardless of what a manifest
-/// claims.
+/// claims. Compared case-insensitively (ASCII-fold is sufficient — these
+/// are platform-reserved literal names, not user content) because both
+/// shipped targets (Windows/NTFS, macOS/APFS) default to case-insensitive
+/// filesystems, where `"OPTIONS.TXT"`/`"Saves/x"` resolve to the same file
+/// a case-sensitive `==` would miss. Called from [`validate`] (so the whole
+/// manifest is rejected before any download begins, not just the one
+/// offending entry) as well as at write time in `download_one`/
+/// `apply_deletes` as a second, independent check.
 fn assert_never_touch(rel_path: &str) -> Result<(), SyncError> {
     let top = rel_path.split('/').next().unwrap_or("");
-    if NEVER_TOUCH_DIRS.contains(&top) || NEVER_TOUCH_TOP_LEVEL_FILES.contains(&rel_path) {
+    if NEVER_TOUCH_DIRS.iter().any(|p| p.eq_ignore_ascii_case(top))
+        || NEVER_TOUCH_TOP_LEVEL_FILES
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(rel_path))
+    {
         return Err(SyncError::ManifestRejected(format!(
             "refusing to touch protected path: {rel_path}"
         )));
@@ -726,6 +739,54 @@ mod tests {
         match result {
             Err(SyncError::ManifestRejected(msg)) => {
                 assert!(msg.contains("etc/campfire-owned"), "message was: {msg}")
+            }
+            other => panic!("expected the whole manifest to be rejected, got {other:?}"),
+        }
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            0,
+            "no file should exist in the game directory after a rejected manifest"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-03: the never-touch guard used to be checked lazily, per-file, at
+    /// write time — so a violation partway through a batch could still
+    /// leave sibling downloads on disk. It is now folded into `validate()`,
+    /// which both `sync()` and `verify()` call before any download begins,
+    /// so this proves the same "whole manifest rejected, nothing written"
+    /// guarantee holds for a never-touch violation too, not just the
+    /// path-traversal case above.
+    #[test]
+    fn a_never_touch_violation_among_good_entries_is_rejected_before_any_file_would_be_written() {
+        let dir = scratch_dir("never-touch-e2e");
+        let mut files: Vec<ManifestFile> = (0..20)
+            .map(|i| ManifestFile {
+                path: format!("mods/Good{i}.jar"),
+                sha256: "0".repeat(64),
+                size: 1,
+                url: format!("mods/Good{i}.jar"),
+            })
+            .collect();
+        files.push(ManifestFile {
+            path: "saves/World/level.dat".to_string(),
+            sha256: "0".repeat(64),
+            size: 1,
+            url: "saves/World/level.dat".to_string(),
+        });
+        let manifest = Manifest {
+            pack_version: "test".to_string(),
+            mc: "1.12.2".to_string(),
+            forge: "14.23.5.2860".to_string(),
+            java: 8,
+            files,
+            delete: vec![],
+        };
+
+        let result = validate(&manifest, &dir);
+        match result {
+            Err(SyncError::ManifestRejected(msg)) => {
+                assert!(msg.contains("protected path"), "message was: {msg}")
             }
             other => panic!("expected the whole manifest to be rejected, got {other:?}"),
         }
