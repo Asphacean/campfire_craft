@@ -163,6 +163,7 @@ PLATFORM_KEYS=()
 PLATFORM_FILES=()
 resolve_all_platforms() {
   local artifact filename platform
+  declare -A _seen_platforms
   for artifact in "${ARTIFACTS[@]}"; do
     [ -f "$artifact" ] || { log "FATAL: artifact not found: $artifact"; exit 3; }
     filename="$(basename "$artifact")"
@@ -170,6 +171,11 @@ resolve_all_platforms() {
       log "FATAL: could not determine platform from filename: $filename (expected Tauri's own *_x64-setup.exe / *_x64_en-US.msi / *_x64.app.tar.gz / *_aarch64.app.tar.gz naming)"
       exit 3
     fi
+    if [ -n "${_seen_platforms[$platform]:-}" ]; then
+      log "FATAL: platform $platform already resolved from ${_seen_platforms[$platform]}, refusing duplicate from $filename (a whole-run refusal, not a silent clobber -- e.g. both a .exe and a .msi for windows-x86_64 in one run)"
+      exit 3
+    fi
+    _seen_platforms[$platform]="$filename"
     PLATFORM_KEYS+=("$platform")
     PLATFORM_FILES+=("$artifact")
     log "Resolved $filename -> $platform"
