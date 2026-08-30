@@ -157,7 +157,7 @@ Plans:
   2. A friend downloads the Windows installer from that release, installs it, and plays — nothing else required
   3. A friend on an Apple Silicon Mac follows the written one-time Gatekeeper bypass, opens the app, and plays with the game rendering correctly on real hardware
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -166,7 +166,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — The one-way door opened deliberately: full history pushed to the public repo on `main`, a third runner registered on the Pi without disturbing the existing two, then the tracer — tag `v0.1.0` through three build legs, a Release and a live signed feed (REL-01)
+- [x] 05-02-PLAN.md — The one-way door opened deliberately: full history pushed to the public repo on `main`, a third runner registered on the Pi without disturbing the existing two, then the tracer — tag `v0.1.0` through three build legs, a Release and a live signed feed (REL-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -183,7 +183,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
 | 4. Launcher | 4/4 | In Progress|  |
-| 5. Release to Friends | 1/3 | In Progress|  |
+| 5. Release to Friends | 2/3 | In Progress|  |
 
 ## Requirement Coverage
 
