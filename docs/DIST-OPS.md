@@ -438,4 +438,7 @@ above, but remains available to the operator at any time as a spot-check.
   `/register`/`/login`/`/status` API contract. This page does not
   duplicate it.
 - `docs/AUTH-OPS.md` — the accounts/auth-gate operational runbook
+- `docs/LAUNCHER-BUILD.md` — build-from-source instructions for Windows
+  x64 and Apple Silicon, the headless proof-harness subcommand list, and
+  the full Phase 4 operator QA matrix
   (tokens, rollback, support answers).

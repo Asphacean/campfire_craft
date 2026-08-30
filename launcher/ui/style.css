@@ -1,6 +1,12 @@
 /* 04-UI-SPEC.md tokens, declared as CSS custom properties before any
    component exists (task 1). Components consume these vars, never a
-   hardcoded literal, so the whole visual contract lives in one place. */
+   hardcoded literal, so the whole visual contract lives in one place.
+   art/background.png and art/logo.png (added in task 3) are RLCraft's own
+   assets, copied verbatim from pack/resources/mainmenu/ — no resizing,
+   the webview scales them — and reused under the same accepted-risk
+   redistribution decision the operator recorded for the pack itself in
+   Phase 3 (docs/DIST-OPS.md "The accepted redistribution risk (D-07)").
+   They are build-time assets bundled into the binary, not fetched. */
 :root {
   /* Spacing scale (04-UI-SPEC.md "Spacing Scale") */
   --space-xs: 4px;
@@ -64,10 +70,24 @@ input:focus-visible {
 #background {
   position: absolute;
   inset: 0;
-  background: var(--color-dominant);
-  /* RLCraft art background is a build-time asset added in a later wave;
-     the flat fallback color holds the contract unchanged either way. */
   z-index: 0;
+  /* `background-color` is a separate layer from `background-image` in the
+     shorthand below — if the image file is ever missing (moved aside, a
+     bad build), the browser simply fails to paint that layer and the
+     dominant flat color underneath still renders. The whole D-04 fallback
+     contract rests on this one property never being removed. */
+  background-color: var(--color-dominant);
+  background-image: url("art/background.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.logo {
+  display: block;
+  max-width: 160px;
+  height: auto;
+  margin: 0 auto var(--space-xs);
 }
 
 .wordmark {
@@ -91,6 +111,14 @@ input:focus-visible {
   font-weight: var(--text-label-weight);
   line-height: var(--text-label-line);
   color: var(--color-text-muted);
+  /* UI-SPEC's "Contrast over art" rule ("all text sits on the ... panel,
+     never directly on raw art pixels") applies here too, not only inside
+     `.panel` — this is the same translucent-panel color/opacity, just its
+     own small pill rather than the big form panel, now that a real busy
+     art image sits behind it (task 3) rather than the flat fallback color
+     wave 1's status pill was authored against. */
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-panel) calc(var(--color-panel-opacity) * 100%), transparent);
 }
 
 .status-dot {
