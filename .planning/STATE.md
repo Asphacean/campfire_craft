@@ -96,6 +96,7 @@ Resume file: None
 
 | Phase | State | Resume |
 |-------|-------|--------|
+| 4 | verification_deferred_human | /gsd-verify-work 4 — operator: run after Phase 5 release builds (Windows x64 + Apple Silicon QA) |
 | 3 | verification_deferred_human | /gsd-verify-work 3 — operator: run after launcher exists (real-client play test) |
 | 2 | verification_deferred_human | /gsd-verify-work 2 — operator: run after launcher exists (needs real client) |
 | 1 | verification_deferred_human | /gsd-verify-work 1 — operator: run after launcher exists; router confirmed only 25565 forwarded |
