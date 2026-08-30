@@ -178,12 +178,48 @@ contains a password, a refresh token, or a game token — every one of
 those is redacted to `<redacted, N bytes>` at the point of logging, not
 scrubbed afterward.
 
-## Publishing a build
+## Cutting a release
 
-Once you have artifacts from the platform(s) above, publish them with
-`scripts/publish-launcher.sh` — see `docs/DIST-OPS.md`'s "The launcher
-self-update feed" section for the full command, the artifact naming
-convention it expects, and where the signing key lives.
+The path that ships to friends is one command, from the repository root:
+
+```bash
+scripts/release.sh <version>
+```
+
+This bumps the version everywhere it's written (`tauri.conf.json`,
+`Cargo.toml`, `Cargo.lock`), commits, tags `v<version>`, and pushes. That
+push triggers `.github/workflows/release.yml`: three GitHub-hosted runners
+(`windows-latest`, `macos-14`, `macos-15-intel`) build the Windows
+installer and both macOS bundles, attach them to a new GitHub Release, and
+a job on this Pi's own self-hosted runner (`campfire-publish`) downloads
+those assets, signs them with the operator's pi-only minisign key, and
+republishes `/launcher/latest.json` — the same job `scripts/publish-launcher.sh`
+has always done, now driven by CI instead of by hand.
+
+Watch the run at <https://github.com/Asphacean/campfire_craft/actions> —
+it takes several minutes per platform leg. When it finishes, the release
+carries six assets: the Windows NSIS installer and MSI
+(`_x64-setup.exe`, `_x64_en-US.msi`), both macOS `.dmg` disk images
+(`_aarch64.dmg`, `_x64.dmg`), and both macOS updater archives
+(`_aarch64.app.tar.gz`, `_x64.app.tar.gz`) — the last two are what the
+self-update feed serves, not something a friend downloads directly. The
+canonical link for anyone fetching the result, friend or operator, is
+<https://github.com/Asphacean/campfire_craft/releases/latest> — it always
+resolves to whatever this command just cut.
+
+**If a macOS leg fails right inside `bundle_dmg.sh`,** that's a known,
+intermittent upstream flake in the DMG-creation tooling, not a
+configuration problem — re-run the same workflow run (or push an empty
+commit and re-tag) and it typically succeeds on the retry.
+
+The signing key never leaves this Pi — it's what makes every signature the
+self-update feed publishes a real one, verifiable against the public key
+compiled into every installed launcher. The hand-build steps in the
+sections above still apply if you need to build one platform locally
+(iterating on a change, or the QA matrix's Apple Silicon checks below);
+`scripts/publish-launcher.sh` (`docs/DIST-OPS.md`'s "The launcher
+self-update feed" section) remains the fallback for publishing something
+built that way instead of through the pipeline.
 
 ## The Phase 4 operator QA matrix
 
@@ -264,6 +300,86 @@ The Phase 1 and Phase 2 items that were waiting for a real client — a
 friend outside the home network joining by domain and playing, and a
 vanilla client with no token being kicked with a clear message — are now
 runnable with this launcher and should be run alongside item 1 above.
+
+## The Phase 5 release QA matrix
+
+Everything below needs the actual released artifacts on real hardware —
+not a local build. Download from
+<https://github.com/Asphacean/campfire_craft/releases/latest> exactly the
+way a friend would, work through the list, and report each line as pass,
+fail, or something-else-happened. This continues the numbering above and
+closes out REL-01 through REL-03, plus the Phase 1-4 items that were
+waiting on exactly this release.
+
+### On Windows x64, from the released installer (REL-01, REL-02)
+
+18. **Download it like a friend.** From the release page above, download
+    `Campfire-Launcher_0.1.0_x64-setup.exe` and run it.
+19. **The SmartScreen detour.** Report the exact wording of the warning
+    dialog, and confirm "More info" → "Run anyway" gets past it with no
+    further prompt.
+20. **No administrator prompt.** The installer completes without ever
+    asking to elevate — it installs per-user, per `docs/FRIENDS.md`.
+21. **Start menu entry.** The app appears in the Start menu under its
+    released name ("Campfire Launcher").
+22. **Clean-machine Play.** On a machine with no Java installed, register
+    a fresh nick, press Play once, and report the total wall time and the
+    disk space used.
+23. **Second launch.** Close and reopen; you are not asked for a password
+    again.
+
+### On Apple Silicon, from the released disk image (REL-03, D-11)
+
+24. **Download it like a friend.** From the same release page, download
+    `Campfire-Launcher_0.1.0_aarch64.dmg`, open it, and drag the app to
+    Applications.
+25. **The Gatekeeper detour.** Report which of the two documented routes
+    (right-click → Open → Open, or the `xattr -cr` Terminal command from
+    `docs/FRIENDS.md`) was needed, and the exact wording seen.
+26. **The app opens at all.** This is the question ad-hoc signing exists
+    to answer — report whether it does.
+27. **Play, on real hardware.** Report whether the Rosetta translation
+    layer was offered and accepted, whether the game renders, and roughly
+    what framerate you get standing still in a forest — that number
+    decides whether an arm64 follow-up build is ever needed.
+28. **Second launch.** Close and reopen; you are not asked for a password
+    again.
+
+### The update path
+
+29. **Deferred to the next release.** After the next version is cut, an
+    installed launcher should offer the update on startup and install it.
+    This needs a second version to exist, so it's the first item of the
+    *next* release's matrix, not this one.
+
+### Intel macOS
+
+30. **Built, never run.** The Intel disk image
+    (`Campfire-Launcher_0.1.0_x64.dmg`) is produced by CI and downloadable
+    from the same release page, but no Intel Mac exists for this project
+    to run it on. Recorded here as unverified (D-11), not silently
+    omitted.
+
+### The four deferred phase verifications this release unblocks
+
+31. **Phase 1 — a friend outside the home network.** Joining
+    `mc.campfire.pub` by domain from outside the LAN and playing, this
+    time via the launcher instead of the old hand-install path.
+32. **Phase 2 — a vanilla client with no token.** Confirm a vanilla
+    (non-launcher) client connecting without a valid token is kicked with
+    the bilingual message before it can act.
+33. **Phase 3 — a client assembled from the manifest.** Confirm the
+    launcher-assembled client (built purely from the manifest this
+    launcher fetches) joins and plays normally.
+34. **Phase 4 — the window itself.** Progress-step legibility during the
+    first Play, the RAM slider's >70% warning state, the wrong-password
+    and server-unreachable error banners with their "Open log" button,
+    the status pill's Online/Offline/Checking states, and the "Game
+    folder"/"Verify files" secondary buttons — all per `04-UI-SPEC.md`.
+
+The operator's own Mac is Apple Silicon, and that is one machine. Anything
+a friend reports that this matrix doesn't cover is a finding, not a
+failure.
 
 ### One thing to watch for
 
