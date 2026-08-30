@@ -75,12 +75,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # macOS runners have no `sha256sum` (that's GNU coreutils; this
+          # image's GNU tools are all 'g'-prefixed, e.g. `gtar`) — the
+          # native equivalent is `shasum -a 256`, which emits the same
+          # "<hex>  <filename>" format `sha256sum -c` on the publish job's
+          # Linux self-hosted runner expects. `find -exec {} +` (not
+          # `xargs --no-run-if-empty`, a GNU-only long option BSD/macOS
+          # xargs rejects outright) already never invokes the hash command
+          # at all when nothing matches, on both BSD and GNU find.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            HASH_CMD=(shasum -a 256)
+          else
+            HASH_CMD=(sha256sum)
+          fi
           find launcher/target/release/bundle -type f \
             \( -name '*_x64-setup.exe' -o -name '*_x64_en-US.msi' \
                -o -name '*_aarch64.app.tar.gz' -o -name '*_x64.app.tar.gz' \
                -o -name '*.dmg' \) \
-            -print0 \
-            | xargs -0 --no-run-if-empty sha256sum \
+            -exec "${HASH_CMD[@]}" {} + \
             | sed -E 's|(  ).*/|\1|' > "checksums-${{ matrix.platform }}.txt"
           cat "checksums-${{ matrix.platform }}.txt"
 
