@@ -46,7 +46,7 @@ Intel Mac — download the `x64` file.
 
 ## macOS: installing and the one warning you'll see
 
-1. Open the downloaded `.dmg` file, then drag **Campfire Launcher** into the
+1. Open the downloaded `.dmg` file, then drag **Campfire-Launcher** into the
    **Applications** folder.
 2. Open **Applications** and try to launch it. macOS will refuse, saying the
    app is from an unidentified developer (or that it "can't be opened"/"is
@@ -61,7 +61,7 @@ Intel Mac — download the `x64` file.
      **Terminal** app and run this one command, then try opening the app
      normally again:
      ```
-     xattr -cr "/Applications/Campfire Launcher.app"
+     xattr -cr "/Applications/Campfire-Launcher.app"
      ```
 3. After this first time, the app opens normally like any other.
 
