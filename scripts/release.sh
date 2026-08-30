@@ -66,8 +66,8 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-  echo "FATAL: '$VERSION' is not major.minor.patch (three dot-separated integers)" >&2
+if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "FATAL: '$VERSION' is not major.minor.patch (three dot-separated integers, no leading zeros -- a leading zero like '08' is invalid octal in bash's arithmetic comparison below and would crash is_lower instead of being cleanly rejected here)" >&2
   exit 2
 fi
 NEW_MAJOR="${BASH_REMATCH[1]}"
@@ -94,7 +94,7 @@ else
 fi
 
 CURRENT_VERSION="$(jq -r .version "$TAURI_CONF")"
-if ! [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+if ! [[ "$CURRENT_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "FATAL: current version '$CURRENT_VERSION' in $TAURI_CONF is not major.minor.patch -- can't compare" >&2
   exit 2
 fi
