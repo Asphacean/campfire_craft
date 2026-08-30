@@ -153,11 +153,24 @@ Plans:
 **Requirements**: REL-01, REL-02, REL-03
 **Success Criteria** (what must be TRUE):
 
-  1. Pushing a tag produces a GitHub release containing a Windows x64 installer and a macOS app, built on the self-hosted runners
+  1. Pushing a tag produces a GitHub release containing a Windows x64 installer and a macOS app — *corrected at planning time (05-CONTEXT.md, 05-RESEARCH.md): the builds run on GitHub-hosted runners, because the existing self-hosted runners are aarch64 Linux and cannot bundle Windows or macOS apps; the Pi's own runner does the signing and feed-publishing step*
   2. A friend downloads the Windows installer from that release, installs it, and plays — nothing else required
   3. A friend on an Apple Silicon Mac follows the written one-time Gatekeeper bypass, opens the app, and plays with the game rendering correctly on real hardware
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — History scanned by value before it can go public, both workflows written and SHA-pinned, the signing gate solved without the operator's key, and `scripts/release.sh` (REL-01, REL-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md — The one-way door opened deliberately: full history pushed to the public repo on `main`, a third runner registered on the Pi without disturbing the existing two, then the tracer — tag `v0.1.0` through three build legs, a Release and a live signed feed (REL-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-03-PLAN.md — The release downloaded anonymously and inspected, `docs/FRIENDS.md` + README with the SmartScreen and Gatekeeper detours, and the real-hardware QA matrix that also reopens the deferred Phase 1–4 checks (REL-02, REL-03)
 
 ## Progress
 
@@ -170,7 +183,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
 | 4. Launcher | 4/4 | In Progress|  |
-| 5. Release to Friends | 0/TBD | Not started | - |
+| 5. Release to Friends | 0/3 | Planned | - |
 
 ## Requirement Coverage
 
