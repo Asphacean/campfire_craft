@@ -154,16 +154,16 @@ log "Updated $LAUNCHER_CARGO_TOML -> $VERSION"
 # refuses. Run from inside launcher/ so the rustup shim resolves
 # rust-toolchain.toml's 1.98.0 pin (a toolchain override is resolved
 # from the current directory, not --manifest-path).
-if ! (cd launcher && "$CARGO_BIN" update --workspace --offline) 2>/tmp/release-cargo-update.log; then
+CARGO_UPDATE_LOG="$(mktemp)"
+trap 'rm -f "$CARGO_UPDATE_LOG"' EXIT
+if ! (cd launcher && "$CARGO_BIN" update --workspace --offline) 2>"$CARGO_UPDATE_LOG"; then
   log "offline cargo update refused, retrying with network access"
-  if ! (cd launcher && "$CARGO_BIN" update --workspace) 2>>/tmp/release-cargo-update.log; then
-    cat /tmp/release-cargo-update.log >&2
-    rm -f /tmp/release-cargo-update.log
+  if ! (cd launcher && "$CARGO_BIN" update --workspace) 2>>"$CARGO_UPDATE_LOG"; then
+    cat "$CARGO_UPDATE_LOG" >&2
     echo "FATAL: cargo update failed both offline and online -- see output above" >&2
     exit 6
   fi
 fi
-rm -f /tmp/release-cargo-update.log
 log "Refreshed $LAUNCHER_CARGO_LOCK"
 
 git add "$TAURI_CONF" "$LAUNCHER_CARGO_TOML" "$LAUNCHER_CARGO_LOCK"
