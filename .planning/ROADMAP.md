@@ -157,12 +157,12 @@ Plans:
   2. A friend downloads the Windows installer from that release, installs it, and plays — nothing else required
   3. A friend on an Apple Silicon Mac follows the written one-time Gatekeeper bypass, opens the app, and plays with the game rendering correctly on real hardware
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — History scanned by value before it can go public, both workflows written and SHA-pinned, the signing gate solved without the operator's key, and `scripts/release.sh` (REL-01, REL-02)
+- [x] 05-01-PLAN.md — History scanned by value before it can go public, both workflows written and SHA-pinned, the signing gate solved without the operator's key, and `scripts/release.sh` (REL-01, REL-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -183,7 +183,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
 | 4. Launcher | 4/4 | In Progress|  |
-| 5. Release to Friends | 0/3 | Planned | - |
+| 5. Release to Friends | 1/3 | In Progress|  |
 
 ## Requirement Coverage
 
