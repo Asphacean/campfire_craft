@@ -14,7 +14,7 @@ Turn the Phase-4 launcher source into downloadable releases friends can install:
 ## Implementation Decisions
 
 ### Repository & CI
-- New GitHub repository **`campfire-pub/rlcraft`**, **public**, containing the whole `~/rlcraft` tree as-is (secrets already gitignored: `server.env`, `ca/campfire-ca-key.pem`, `auth/`, `pack/`, `launcher-dist/`, keys). Pushed from the Pi over SSH (key `~/.ssh/id_ed25519`, GitHub user Asphacean). A pre-push secret scan (grep for `RCON_PASSWORD=`, `BEGIN .* PRIVATE KEY`, `.key` files) runs before the first push
+- New GitHub repository **`campfire-pub/campfire_craft`**, **public**, containing the whole `~/rlcraft` tree as-is (secrets already gitignored: `server.env`, `ca/campfire-ca-key.pem`, `auth/`, `pack/`, `launcher-dist/`, keys). Pushed from the Pi over SSH (key `~/.ssh/id_ed25519`, GitHub user Asphacean). A pre-push secret scan (grep for `RCON_PASSWORD=`, `BEGIN .* PRIVATE KEY`, `.key` files) runs before the first push
 - Public visibility chosen for unlimited GitHub-hosted macOS/Windows minutes; no secrets in code; domain/IP are already public
 - Build matrix via `tauri-apps/tauri-action` on tag `v*`: `windows-latest` → x64 NSIS `.exe`; `macos-14` → aarch64 `.dmg`; `macos-13` → x86_64 `.dmg`. Artifacts + Tauri updater `.sig` files attached to a GitHub Release
 - Publish job on self-hosted runner **`rpi5-1`** (register a runner for the new repo in addition to the existing registration): downloads the release assets and runs `scripts/publish-launcher.sh` so `latest.json` + artifacts land on `https://mc.campfire.pub:8444/launcher/`. minisign private key stays pi-only (never in GitHub Secrets) — the Pi job signs
