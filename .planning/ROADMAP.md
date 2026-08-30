@@ -157,7 +157,7 @@ Plans:
   2. A friend downloads the Windows installer from that release, installs it, and plays — nothing else required
   3. A friend on an Apple Silicon Mac follows the written one-time Gatekeeper bypass, opens the app, and plays with the game rendering correctly on real hardware
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -170,7 +170,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-03-PLAN.md — The release downloaded anonymously and inspected, `docs/FRIENDS.md` + README with the SmartScreen and Gatekeeper detours, and the real-hardware QA matrix that also reopens the deferred Phase 1–4 checks (REL-02, REL-03)
+- [x] 05-03-PLAN.md — The release downloaded anonymously and inspected, `docs/FRIENDS.md` + README with the SmartScreen and Gatekeeper detours, and the real-hardware QA matrix that also reopens the deferred Phase 1–4 checks (REL-02, REL-03)
 
 ## Progress
 
@@ -183,7 +183,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
 | 4. Launcher | 4/4 | In Progress|  |
-| 5. Release to Friends | 2/3 | In Progress|  |
+| 5. Release to Friends | 3/3 | In Progress|  |
 
 ## Requirement Coverage
 
