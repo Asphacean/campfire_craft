@@ -65,6 +65,31 @@ jobs:
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
 
+      # CR-01: a GitHub Release asset is mutable after upload by anyone with
+      # release-edit permission, so the publish job below can't trust "matches
+      # this filename on this tag" as proof the bytes are what this build just
+      # produced. Record a build-time checksum as a workflow-run ARTIFACT
+      # instead (immutable once uploaded, unlike a release asset) so publish
+      # can verify before it signs anything with the real pi-only key.
+      - name: "Record artifact checksums (CR-01 signing-oracle guard)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          find launcher/target/release/bundle -type f \
+            \( -name '*_x64-setup.exe' -o -name '*_x64_en-US.msi' \
+               -o -name '*_aarch64.app.tar.gz' -o -name '*_x64.app.tar.gz' \
+               -o -name '*.dmg' \) \
+            -print0 \
+            | xargs -0 --no-run-if-empty sha256sum \
+            | sed -E 's|(  ).*/|\1|' > "checksums-${{ matrix.platform }}.txt"
+          cat "checksums-${{ matrix.platform }}.txt"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksums-${{ matrix.platform }}
+          path: checksums-${{ matrix.platform }}.txt
+          retention-days: 1
+
   publish:
     needs: build
     runs-on: [self-hosted, campfire-publish]
@@ -75,6 +100,17 @@ jobs:
       # the operator's real working tree, which is where server.env, the
       # pi-only signing key and the Caddy-served launcher-dist/ actually
       # live — a runner-scratch checkout would have none of those.
+      # CR-01: pull the build job's checksum artifacts (workflow-run
+      # artifacts, immutable once uploaded — unlike the mutable Release
+      # page below) so the verify step can prove the downloaded release
+      # assets are the exact bytes the build job produced in this same run,
+      # before anything gets signed with the real pi-only key.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: checksums-*
+          path: checksums
+          merge-multiple: true
+
       - name: Download release assets and publish the signed feed
         shell: bash
         run: |
@@ -101,6 +137,19 @@ jobs:
           while IFS= read -r url; do
             curl -fsSL -O "$url"
           done <<< "$ASSET_URLS"
+
+          # CR-01: refuse to sign anything until every downloaded asset's
+          # sha256 matches what the build job recorded for it in this same
+          # run. A GitHub Release asset can be swapped after upload by
+          # anyone with release-edit rights; the checksums artifact
+          # downloaded above cannot be, so it's the only thing this step
+          # trusts as proof of provenance.
+          CHECKSUMS_DIR="$GITHUB_WORKSPACE/checksums"
+          for f in *; do
+            grep -qF "  $f" "$CHECKSUMS_DIR"/*.txt || { echo "FATAL: no known-good checksum for $f -- refusing to sign" >&2; exit 1; }
+          done
+          sha256sum -c <(cat "$CHECKSUMS_DIR"/*.txt) --ignore-missing
+          echo "Checksum verification passed for all downloaded assets."
 
           /home/asphacean/rlcraft/scripts/publish-launcher.sh \
             --version "$VERSION" \
