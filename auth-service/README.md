@@ -70,6 +70,25 @@ token at exactly one unrotated use. `campfire-auth reset <nick>` revokes
 every outstanding refresh token for that nick, so a password reset ends
 remembered sessions too, not just future logins.
 
+### `POST /logout`
+
+Request: `{"nick": "<nick>", "refresh": "<refresh token to revoke>"}`
+
+| Status | Body | When |
+|--------|------|------|
+| 204 | (empty) | The presented refresh token was live and is now revoked |
+| 401 | `{"error":"invalid_token"}` | Unknown nick, no matching unexpired/unrevoked token, or a lost race to a concurrent `/refresh`/`/logout` call — no distinction between the cases |
+| 400 | `{"error":"bad_json"}` | Malformed/incomplete body |
+| 429 | `{"error":"rate_limited"}` | More than 60 calls from this peer address in the last hour — same circuit-breaker rationale as `/refresh`, its own separate limiter |
+
+WR-04: revokes the presented refresh token (the same compare-and-swap
+`/refresh` uses) without issuing a replacement — the server-side half of
+"Log out ends the session everywhere", not just on the one machine that
+pressed the button. The launcher calls this best-effort: whatever this
+endpoint returns, the launcher's local credential-store entry is cleared
+unconditionally, so a network failure or rate limit here never leaves a
+user unable to log out locally.
+
 ### `POST /validate`
 
 Request: `{"nick": "<nick>", "token": "<token from /login>"}`
@@ -193,13 +212,14 @@ handler, is in `caddy/Caddyfile` and `.planning/phases/03-modpack-distribution/0
 | `/api/register` | POST | `127.0.0.1:8081/register` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
 | `/api/login` | POST | `127.0.0.1:8081/login` | `/api` prefix stripped by Caddy; this service's own route table is unchanged |
 | `/api/refresh` | POST | `127.0.0.1:8081/refresh` | `/api` prefix stripped by Caddy; see `POST /refresh` above |
+| `/api/logout` | POST | `127.0.0.1:8081/logout` | `/api` prefix stripped by Caddy; see `POST /logout` above |
 | `/status` | GET | `127.0.0.1:8081/status` | See `GET /status` above |
 | `/launcher/<file>` | GET, HEAD | `file_server` at `~/rlcraft/launcher-dist/<file>` (Phase 4) | The self-update feed's static tree, rooted outside `PACK_DIR` so the pack manifest generator never walks it |
 | anything else | any | — | 404 from the terminal handler |
 | non-GET/HEAD on `/manifest.json`, `/pack/*` or `/launcher/*` | — | — | 405 |
 
 **`/validate` has no public route and must never get one.** There is no
-wildcard under `/api` in `caddy/Caddyfile` — only these three exact paths
+wildcard under `/api` in `caddy/Caddyfile` — only these four exact paths
 are routed. Adding a prefix wildcard would republish the token-validation
 endpoint, which is unauthenticated beyond the token itself and has no rate
 limit by design.

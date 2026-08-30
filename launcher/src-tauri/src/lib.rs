@@ -94,8 +94,8 @@ async fn restore_session() -> Result<SessionView, String> {
 }
 
 #[tauri::command]
-fn logout(nick: String) {
-    auth::logout(&nick);
+async fn logout(nick: String) {
+    auth::logout(&nick).await;
 }
 
 /// Where `launcher.log` lives — still exposed for anything that just wants

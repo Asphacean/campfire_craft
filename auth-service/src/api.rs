@@ -38,6 +38,11 @@ pub struct AppState {
     /// there is no brute-force surface to defend, so this exists purely to
     /// bound runaway automation, mirroring `login_success_limiter`'s shape.
     pub refresh_limiter: RateLimiter,
+    /// WR-04: same shape and limit as `refresh_limiter` — `/logout` is a
+    /// revoke-only sibling of `/refresh` (same "no brute-force surface,
+    /// just a circuit breaker" rationale), kept as its own named limiter
+    /// so a logout burst never eats into `/refresh`'s own budget.
+    pub logout_limiter: RateLimiter,
     /// D-11: SLP ping target (`SLP_ADDR`, default 127.0.0.1:25565).
     pub slp_addr: String,
     /// D-11: the last `/status` result and when it was computed, reused for
@@ -180,6 +185,15 @@ pub struct ValidateResponse {
 
 #[derive(Deserialize)]
 pub struct RefreshRequest {
+    pub nick: String,
+    pub refresh: String,
+}
+
+/// WR-04: identical shape to [`RefreshRequest`] — `/logout` revokes the
+/// exact same kind of token `/refresh` rotates, it just doesn't issue a
+/// replacement.
+#[derive(Deserialize)]
+pub struct LogoutRequest {
     pub nick: String,
     pub refresh: String,
 }
@@ -478,6 +492,62 @@ pub async fn refresh(
                 expires,
                 refresh: new_refresh,
             }));
+        }
+    }
+
+    Err(ApiError::InvalidToken)
+}
+
+/// `POST /logout` (proxied publicly as `/api/logout`, WR-04): revokes the
+/// presented refresh token without issuing a replacement — the server-side
+/// half of "Log out ends the session everywhere", not just on this
+/// machine. Structured identically to [`refresh`]'s candidate-walk (look
+/// the user up, walk unexpired/unrevoked candidates, argon2-verify each,
+/// only a winning compare-and-swap counts) minus the reissue step. The
+/// launcher calls this best-effort and clears its local credential-store
+/// entry unconditionally regardless of this call's outcome, so an unknown
+/// nick, no match, or an already-revoked token are all the same 401 —
+/// there is nothing for the caller to react to differently either way.
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Result<Json<LogoutRequest>, JsonRejection>,
+) -> Result<StatusCode, ApiError> {
+    let limit_ip = client_ip(peer, &headers);
+
+    if !state.logout_limiter.check(limit_ip) {
+        return Err(ApiError::RateLimited);
+    }
+
+    let Json(req) = body?;
+    let nick_lower = req.nick.to_lowercase();
+
+    let user = state
+        .db
+        .find_user_by_nick_lower(&nick_lower)
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::InvalidToken)?;
+
+    let now = crate::db::now_unix();
+    let candidates = state
+        .db
+        .candidate_refresh_tokens(user.id, now)
+        .map_err(|_| ApiError::Internal)?;
+
+    for candidate in candidates {
+        if auth::verify_secret(&req.refresh, &candidate.token_hash) {
+            let revoked = state
+                .db
+                .revoke_refresh(candidate.id, now)
+                .map_err(|_| ApiError::Internal)?;
+            if revoked {
+                return Ok(StatusCode::NO_CONTENT);
+            }
+            // Lost the race to a concurrent /refresh or /logout call —
+            // this presented value is dead either way, same as /refresh's
+            // own race-loss handling.
+            break;
         }
     }
 

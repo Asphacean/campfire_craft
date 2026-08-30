@@ -44,7 +44,7 @@ mc.campfire.pub:8444 {
 		}
 		respond @write_guard 405
 
-		# Published API (D-04). Only these three EXACT paths are routed —
+		# Published API (D-04). Only these four EXACT paths are routed —
 		# there is no wildcard under /api. The token-validation endpoint
 		# (/validate on 127.0.0.1:8081) is DELIBERATELY ABSENT here: it is
 		# unauthenticated beyond the token itself and its only legitimate
@@ -75,6 +75,14 @@ mc.campfire.pub:8444 {
 		# the header_up line is the anti-spoofing control the rate limiter
 		# depends on (T-04-01-09).
 		handle /api/refresh {
+			uri strip_prefix /api
+			reverse_proxy 127.0.0.1:8081 {
+				header_up X-Forwarded-For {http.request.remote.host}
+			}
+		}
+		# WR-04: server-side logout (revoke, no reissue). Same shape as
+		# /api/refresh above, copied verbatim for the same reason.
+		handle /api/logout {
 			uri strip_prefix /api
 			reverse_proxy 127.0.0.1:8081 {
 				header_up X-Forwarded-For {http.request.remote.host}

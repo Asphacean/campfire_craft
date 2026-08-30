@@ -155,10 +155,40 @@ pub async fn refresh(nick: &str, refresh_token: &str) -> Result<(Session, String
     Err(AuthError::from_code(&body.error))
 }
 
-/// Clears local state only — no network call. There is nothing server-side
-/// to revoke synchronously; the refresh token is simply forgotten locally.
-pub fn logout(nick: &str) {
+/// WR-04: best-effort `POST /api/logout`, then clears local state
+/// unconditionally. The stored refresh token must be read before the local
+/// clear (there is nothing to revoke once it's gone), but the network
+/// call's outcome never gates the local clear — a network failure, a rate
+/// limit, or the server already treating the token as dead must never
+/// leave a user "stuck logged in" on this machine. This is what actually
+/// ends the session server-side (the 30-day refresh token can otherwise
+/// keep minting fresh game tokens for anyone holding a copy of it); the
+/// local clear alone only ever forgot it here.
+pub async fn logout(nick: &str) {
     log::info(&format!("logout: nick={nick}"));
+    if let Some(refresh_token) = load_refresh_for(nick) {
+        let resp = campfire_client()
+            .post(format!("{}/api/logout", campfire_base_url()))
+            .json(&serde_json::json!({ "nick": nick, "refresh": refresh_token }))
+            .send()
+            .await;
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                log::info(&format!("logout: server-side revoke ok for nick={nick}"));
+            }
+            Ok(r) => {
+                log::info(&format!(
+                    "logout: server-side revoke returned status={} for nick={nick} (local state cleared regardless)",
+                    r.status()
+                ));
+            }
+            Err(_) => {
+                log::info(&format!(
+                    "logout: server-side revoke failed (network) for nick={nick} (local state cleared regardless)"
+                ));
+            }
+        }
+    }
     clear_refresh(nick);
 }
 

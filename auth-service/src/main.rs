@@ -35,6 +35,9 @@ const LOGIN_SUCCESS_LIMIT: usize = 60;
 /// D-17/T-04-01-08: 60 `/refresh` calls/hour/peer — a circuit breaker, not
 /// a brute-force control (a refresh token has no guessable surface).
 const REFRESH_LIMIT: usize = 60;
+/// WR-04: same limit and rationale as `/refresh` — `/logout` has its own
+/// named limiter so it never shares budget with `/refresh`.
+const LOGOUT_LIMIT: usize = 60;
 const RATE_WINDOW: Duration = Duration::from_secs(3600);
 /// Same TTL `/login` uses (D-03) — `campfire-auth login` mints through the
 /// same code path.
@@ -196,6 +199,7 @@ async fn serve() {
         login_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_FAIL_LIMIT),
         login_success_limiter: RateLimiter::new(RATE_WINDOW, LOGIN_SUCCESS_LIMIT),
         refresh_limiter: RateLimiter::new(RATE_WINDOW, REFRESH_LIMIT),
+        logout_limiter: RateLimiter::new(RATE_WINDOW, LOGOUT_LIMIT),
         slp_addr,
         status_cache: std::sync::Mutex::new(None),
     });
@@ -205,6 +209,7 @@ async fn serve() {
         .route("/login", post(api::login))
         .route("/validate", post(api::validate))
         .route("/refresh", post(api::refresh))
+        .route("/logout", post(api::logout))
         .route("/status", get(api::status))
         .with_state(state);
 

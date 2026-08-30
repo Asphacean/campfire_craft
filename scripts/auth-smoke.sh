@@ -385,6 +385,28 @@ req 127.0.0.14 /refresh "{\"nick\":\"ResetRefreshNick\",\"refresh\":\"$RESET_REF
 [[ "$REQ_CODE" == "401" ]] && pass "campfire-auth reset leaves an outstanding refresh token unusable" \
   || fail "refresh token dead after reset" "401" "$REQ_CODE"
 
+# ============================================================
+# WR-04: /logout revokes without reissuing — 127.0.0.15
+# ============================================================
+req 127.0.0.15 /login "{\"nick\":\"$NICK\",\"password\":\"$PASSWORD\"}"
+LOGOUT_REFRESH=$(extract_json_string "$REQ_BODY" refresh)
+
+req 127.0.0.15 /logout "{\"nick\":\"$NICK\",\"refresh\":\"$LOGOUT_REFRESH\"}"
+[[ "$REQ_CODE" == "204" ]] && pass "logout with a live refresh token returns 204" \
+  || fail "logout returns 204" "204" "$REQ_CODE"
+
+req 127.0.0.15 /refresh "{\"nick\":\"$NICK\",\"refresh\":\"$LOGOUT_REFRESH\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "a refresh token revoked by /logout can no longer be used to /refresh" \
+  || fail "logged-out refresh token dies for /refresh" "401" "$REQ_CODE"
+
+req 127.0.0.15 /logout "{\"nick\":\"$NICK\",\"refresh\":\"$LOGOUT_REFRESH\"}"
+[[ "$REQ_CODE" == "401" ]] && pass "logging out an already-revoked refresh token returns 401" \
+  || fail "already-revoked logout returns 401" "401" "$REQ_CODE"
+
+req 127.0.0.15 /logout '{"nick":"NoSuchLogoutNick","refresh":"whatever-not-a-real-token"}'
+[[ "$REQ_CODE" == "401" ]] && pass "logout for an unknown nick returns 401" \
+  || fail "unknown-nick logout returns 401" "401" "$REQ_CODE"
+
 # --- At-rest secrecy: hashes only, never plaintext (T-02-01-02 / T-02-01-05) ---
 BAD_HASH_COUNT=$(sqlite3 "$DB_PATH" "select count(*) from users where pw_hash NOT LIKE '\$argon2id\$%';")
 [[ "$BAD_HASH_COUNT" == "0" ]] && pass "every row of users.pw_hash starts with \$argon2id\$" \
