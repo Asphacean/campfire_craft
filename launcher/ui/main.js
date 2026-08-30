@@ -1,9 +1,9 @@
 // The whole single-screen frontend: form state, button handlers, status
 // polling, the RAM slider, the Play sequence and its progress channel,
-// Verify files, Game folder, Open log, and the update dialog (wave 4 adds
-// the update dialog in a later task). No bundler and no ES module syntax
-// anywhere — everything reaches Rust through window.__TAURI__.core.invoke
-// (app.withGlobalTauri in tauri.conf.json).
+// Verify files, Game folder, Open log, and the self-update dialog. No
+// bundler and no ES module syntax anywhere — everything reaches Rust
+// through window.__TAURI__.core.invoke (app.withGlobalTauri in
+// tauri.conf.json).
 
 const invoke = window.__TAURI__.core.invoke;
 const Channel = window.__TAURI__.core.Channel;
@@ -35,6 +35,12 @@ const el = {
   gameFolderBtn: document.getElementById("game-folder-btn"),
   verifyFilesBtn: document.getElementById("verify-files-btn"),
   versionFooter: document.getElementById("version-footer"),
+  updateOverlay: document.getElementById("update-overlay"),
+  updateDialogTitle: document.getElementById("update-dialog-title"),
+  updateDialogBody: document.getElementById("update-dialog-body"),
+  updateDialogProgress: document.getElementById("update-dialog-progress"),
+  updateNowBtn: document.getElementById("update-now-btn"),
+  updateLaterBtn: document.getElementById("update-later-btn"),
 };
 
 let STRINGS = {};
@@ -48,6 +54,9 @@ function applyStaticCopy() {
   el.playBtn.textContent = STRINGS.ctaPlay;
   el.gameFolderBtn.textContent = STRINGS.btnGameFolder;
   el.verifyFilesBtn.textContent = STRINGS.btnVerifyFiles;
+  el.updateDialogTitle.textContent = STRINGS.updateDialogTitle;
+  el.updateNowBtn.textContent = STRINGS.updateButtonNow;
+  el.updateLaterBtn.textContent = STRINGS.updateButtonLater;
 }
 
 function showError(message) {
@@ -391,6 +400,60 @@ el.gameFolderBtn.addEventListener("click", async () => {
   }
 });
 
+// --- Self-update dialog (LNCH-08) ----------------------------------------
+// Checked once at startup, after the status poll. A failed or negative
+// check is silent by contract — no dialog, no banner, no log noise the
+// user can see. No `@tauri-apps/plugin-updater` import anywhere in this
+// file: the check and the install both cross the boundary as ordinary
+// `invoke()` calls into `check_update`/`install_update`, consistent with
+// the whole no-npm decision from wave 1.
+async function checkForUpdate() {
+  let available;
+  try {
+    available = await invoke("check_update");
+  } catch {
+    // Silent by contract — the command itself never throws in practice
+    // (campfire_launcher_core::update::check has no error path out), but
+    // nothing about self-update may ever surface as a blocking failure.
+    return;
+  }
+  if (!available) return;
+  el.updateDialogBody.textContent = STRINGS.updateBodyTemplate.replace("{version}", available.version);
+  el.updateOverlay.hidden = false;
+}
+
+el.updateLaterBtn.addEventListener("click", () => {
+  el.updateOverlay.hidden = true;
+});
+
+el.updateNowBtn.addEventListener("click", async () => {
+  el.updateNowBtn.disabled = true;
+  el.updateLaterBtn.disabled = true;
+  el.updateDialogProgress.hidden = false;
+  el.updateDialogProgress.textContent = STRINGS.loadingLaunching;
+
+  const channel = new Channel();
+  channel.onmessage = (msg) => {
+    if (msg.event === "Bytes") {
+      el.updateDialogProgress.textContent = `${formatRate(msg.data.per_sec)}`;
+    }
+  };
+
+  try {
+    await invoke("install_update", { onEvent: channel });
+    // A successful install replaces the running binary and restarts the
+    // app on its own (the plugin's own behavior) — nothing further to
+    // render here in the success case.
+  } catch {
+    el.updateOverlay.hidden = true;
+    showError(STRINGS.errorGeneric);
+  } finally {
+    el.updateNowBtn.disabled = false;
+    el.updateLaterBtn.disabled = false;
+    el.updateDialogProgress.hidden = true;
+  }
+});
+
 (async () => {
   STRINGS = await invoke("get_strings");
   applyStaticCopy();
@@ -405,4 +468,5 @@ el.gameFolderBtn.addEventListener("click", async () => {
   await tryRestoreSession();
   await pollStatus();
   setInterval(pollStatus, 15000);
+  checkForUpdate();
 })();

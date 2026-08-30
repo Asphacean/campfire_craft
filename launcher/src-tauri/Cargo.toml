@@ -20,3 +20,8 @@ campfire-launcher-core = { path = "../core" }
 # Legitimacy Audit: OK/Approved) — reveals a path in the OS file manager;
 # no tauri-plugin-shell anywhere in this project.
 tauri-plugin-opener = "2"
+# LNCH-08 (04-RESEARCH.md Standard Stack, Package Legitimacy Audit:
+# OK/Approved) — the official minisign-verifying updater; the download-and-
+# install half lives here (Update::download_and_install), the silent
+# version-check half lives in campfire_launcher_core::update.
+tauri-plugin-updater = "2"

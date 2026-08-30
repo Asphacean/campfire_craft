@@ -24,3 +24,4 @@ pub mod progress;
 pub mod status;
 pub mod strings;
 pub mod system;
+pub mod update;

@@ -92,6 +92,18 @@
       <div id="version-footer" class="version-footer">Launcher · Pack</div>
     </main>
 
+    <div id="update-overlay" class="update-overlay" hidden>
+      <div id="update-dialog" class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title">
+        <div id="update-dialog-title" class="update-dialog-title"></div>
+        <div id="update-dialog-body" class="update-dialog-body"></div>
+        <div id="update-dialog-progress" class="step-label" hidden></div>
+        <div class="update-dialog-buttons">
+          <button id="update-later-btn" type="button" class="btn btn-text">Later</button>
+          <button id="update-now-btn" type="button" class="btn btn-accent">Update now</button>
+        </div>
+      </div>
+    </div>
+
     <script src="main.js"></script>
   </body>
 </html>

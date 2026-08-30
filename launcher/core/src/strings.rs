@@ -56,6 +56,9 @@ pub fn play_error_sentence(code: &str) -> &'static str {
 pub const INFO_FILES_REPAIRED: &str = "Some files didn't match and were repaired.";
 
 pub const UPDATE_DIALOG_TITLE: &str = "Update available";
+/// `{version}` is replaced with the feed's advertised version — the
+/// Copywriting Contract's exact "Version {X.Y.Z} is ready." shape.
+pub const UPDATE_BODY_TEMPLATE: &str = "Version {version} is ready.";
 pub const UPDATE_BUTTON_NOW: &str = "Update now";
 pub const UPDATE_BUTTON_LATER: &str = "Later";
 
@@ -91,6 +94,7 @@ pub fn as_json() -> serde_json::Value {
         "errorOpenLog": ERROR_OPEN_LOG,
         "infoFilesRepaired": INFO_FILES_REPAIRED,
         "updateDialogTitle": UPDATE_DIALOG_TITLE,
+        "updateBodyTemplate": UPDATE_BODY_TEMPLATE,
         "updateButtonNow": UPDATE_BUTTON_NOW,
         "updateButtonLater": UPDATE_BUTTON_LATER,
         "ramWarning": RAM_WARNING,

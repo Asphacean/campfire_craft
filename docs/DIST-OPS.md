@@ -348,6 +348,60 @@ note for the full mechanism.
    CurseForge hand-install path in `docs/CLIENT-SETUP.md` remains the only
    supported manual route until the launcher ships.
 
+### The launcher self-update feed (Phase 4 plan 04, LNCH-08)
+
+`/launcher/latest.json` is the update feed every installed launcher checks
+on startup — the schema (`version`, `notes`, `pub_date`, `platforms.{windows-x86_64,darwin-x86_64,darwin-aarch64}.{url,signature}`)
+is `tauri-plugin-updater`'s own, fetched by
+`campfire_launcher_core::update::check` over the same pinned CA as every
+other campfire.pub request, and by nothing else — the actual signed
+download-and-install goes through the plugin's own `Updater`/`Update`
+types in `src-tauri`, not this crate.
+
+**Artifact naming** (Tauri's own updater-artifact convention;
+`scripts/publish-launcher.sh` reads the platform straight off the
+filename, refusing anything it can't parse):
+
+| Filename shape | Platform key |
+|---|---|
+| `<name>_<version>_x64-setup.exe` | `windows-x86_64` |
+| `<name>_<version>_x64_en-US.msi` | `windows-x86_64` |
+| `<name>_<version>_x64.app.tar.gz` | `darwin-x86_64` |
+| `<name>_<version>_aarch64.app.tar.gz` | `darwin-aarch64` |
+
+**Publishing a new launcher build.** Run `scripts/publish-launcher.sh
+--version <X.Y.Z> [--notes <text>] <artifact> [<artifact> ...]` from the
+repository root, once per release, with every platform's build output
+built per `docs/LAUNCHER-BUILD.md`. The script copies each artifact into
+`launcher-dist/` (served at `/launcher/*` above, outside `PACK_DIR`),
+signs it with the operator's own minisign key, and writes
+`latest.json` atomically (temp file + same-directory rename) — one
+re-runnable step, same shape as `scripts/publish-pack.sh`. Confirm with
+the `curl --cacert ca/campfire-ca.pem` command the script prints at the
+end.
+
+**Key custody.** The signing keypair was generated once with `cargo tauri
+signer generate`. The **private key lives at `~/.tauri/campfire.key` on
+this Pi only** (mode 600) — the checkpoint's "pi-only" choice — and is
+deliberately **not** added to the `BACKUP_DIR` backup set above; its
+password lives in `server.env`'s `LAUNCHER_SIGNING_KEY_PASSWORD`
+(gitignored, same file as `RCON_PASSWORD`), documented empty in
+`server.env.example`. The public half is compiled into every launcher
+binary via `tauri.conf.json`'s `plugins.updater.pubkey`.
+
+**The consequence of losing it.** This host's system disk is an SSD
+(not an SD card, which softens the disk-death risk a Pi normally carries),
+but if `~/.tauri/campfire.key` or its password is ever lost anyway — disk
+failure, accidental deletion, no note taken of the password — **every
+already-installed launcher's self-update permanently stops working**: the
+public key baked into those binaries has no matching private key left to
+sign anything they'll accept, and minisign has no password-reset path.
+Recovery is not "restore the key" — it means generating a brand-new
+keypair, shipping a new launcher build that embeds the new public key via
+Phase 5's release process, and asking every friend to reinstall by hand
+once. This is an accepted, explicit consequence of the checkpoint's
+choice, not an oversight.
+
 ### Router forward result (2026-08-28)
 
 One rule was added: **TCP 8444 → the Pi's LAN address, external port 8444**

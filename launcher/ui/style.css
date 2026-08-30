@@ -302,3 +302,50 @@ input:focus-visible {
   color: var(--color-text-muted);
   text-align: center;
 }
+
+/* LNCH-08: the update-available dialog — its own small overlay panel,
+   same panel background/opacity as the main window so it reads as part
+   of the same surface rather than a separate popup style. */
+.update-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.update-dialog {
+  width: 360px;
+  padding: var(--space-lg);
+  border-radius: 8px;
+  background: var(--color-panel);
+}
+
+.update-dialog-title {
+  font-size: var(--text-heading-size);
+  font-weight: var(--text-heading-weight);
+  line-height: var(--text-heading-line);
+  margin-bottom: var(--space-sm);
+}
+
+.update-dialog-body {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-md);
+}
+
+.update-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.update-dialog-buttons .btn-accent {
+  width: auto;
+  height: auto;
+  margin-top: 0;
+  padding: var(--space-sm) var(--space-md);
+}

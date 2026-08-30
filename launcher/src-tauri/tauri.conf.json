@@ -32,5 +32,11 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://mc.campfire.pub:8444/launcher/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBOTdBRjg4MTUyMTEzRDIKUldUU0V5RVZpSytYZXZpblNrbU9mb25QMW5CSklHR2RkcEUwSEpmSmc5ZjdrT1Q4WkgzeUdYSDMK"
+    }
   }
 }

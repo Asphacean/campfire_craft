@@ -14,9 +14,11 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use campfire_launcher_core::{auth, forge, http, java, launch, manifest, mojang, play, progress::Progress, status, system};
+use campfire_launcher_core::{
+    auth, forge, http, java, launch, manifest, mojang, play, progress::Progress, status, system, update,
+};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n              launch-cmd --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              launch --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              play --nick <n> --ram <g> [--no-spawn] [--dir <path>]\n              system-memory\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n              launch-cmd --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              launch --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              play --nick <n> --ram <g> [--no-spawn] [--dir <path>]\n              system-memory\n              update-check\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -133,6 +135,7 @@ async fn main() {
         "launch" => cmd_launch_cmd(&mut args, true).await,
         "play" => cmd_play(&mut args).await,
         "system-memory" => cmd_system_memory(),
+        "update-check" => cmd_update_check().await,
         _ => usage(),
     }
 }
@@ -533,4 +536,17 @@ fn cmd_system_memory() {
     let total = system::total_memory_gb();
     let recommended = system::recommended_ram_gb(total);
     println!("total_gb={total:.2} recommended_gb={recommended:.1}");
+}
+
+/// LNCH-08: checks the real `/launcher/latest.json` feed against this
+/// binary's own `CARGO_PKG_VERSION`. Always exits 0 — a failed or
+/// malformed check reports "no update available" rather than an error,
+/// exactly like the startup check the window performs (D-08: self-update
+/// is a convenience, never a precondition for playing).
+async fn cmd_update_check() {
+    let current = env!("CARGO_PKG_VERSION");
+    match update::check(current).await {
+        Some(a) => println!("update available: {} ({})", a.version, a.notes),
+        None => println!("no update available"),
+    }
 }

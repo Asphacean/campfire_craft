@@ -10,9 +10,10 @@
 //! event bus (04-RESEARCH.md's "Don't Hand-Roll" row).
 
 use campfire_launcher_core::progress::Progress;
-use campfire_launcher_core::{auth, manifest, play as play_core, status, strings, system};
+use campfire_launcher_core::{auth, manifest, play as play_core, status, strings, system, update};
 use tauri::ipc::Channel;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 /// Returns this crate's own version, so `main.js` can prove the bridge
 /// works by writing the result into the version footer on load.
@@ -216,10 +217,77 @@ fn pack_version() -> Option<String> {
     manifest::cached_pack_version()
 }
 
+/// LNCH-08's startup check: fetches our own feed over the pinned CA and
+/// compares semantically — never the plugin's own `updater().check()`,
+/// which would hit the same feed a second time for no reason. A failed or
+/// negative check is `None`; the frontend shows nothing at all in that
+/// case (D-08: silent by contract).
+#[derive(serde::Serialize)]
+struct AvailableView {
+    version: String,
+    notes: String,
+}
+
+#[tauri::command]
+async fn check_update() -> Option<AvailableView> {
+    update::check(env!("CARGO_PKG_VERSION"))
+        .await
+        .map(|a| AvailableView {
+            version: a.version,
+            notes: a.notes,
+        })
+}
+
+/// "Update now": the one path that actually replaces the running binary,
+/// so it goes through `tauri-plugin-updater`'s own `Updater`/`Update` —
+/// the only thing in this project that verifies the minisign signature —
+/// rather than [`check_update`]'s plain version comparison. Re-fetches the
+/// feed once more via the plugin's own `check()` to get the `Update`
+/// handle `download_and_install` needs; [`check_update`]'s earlier fetch
+/// only decided whether to show the dialog at all. Progress is forwarded
+/// into the same channel shape `play`/`verify_files` already use, so the
+/// window's one progress bar is reused rather than duplicated.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, on_event: Channel<Progress>) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "generic".to_string())?;
+
+    let start = std::time::Instant::now();
+    let downloaded = std::sync::atomic::AtomicU64::new(0);
+    let content_total = std::sync::Mutex::new(0u64);
+
+    update
+        .download_and_install(
+            |chunk_len, content_len| {
+                let so_far = downloaded.fetch_add(chunk_len as u64, std::sync::atomic::Ordering::Relaxed)
+                    + chunk_len as u64;
+                if let Some(len) = content_len {
+                    *content_total.lock().expect("content_total mutex poisoned") = len;
+                }
+                let total = *content_total.lock().expect("content_total mutex poisoned");
+                let elapsed = start.elapsed().as_secs_f64().max(0.001);
+                let _ = on_event.send(Progress::Bytes {
+                    downloaded: so_far,
+                    total,
+                    per_sec: (so_far as f64 / elapsed) as u64,
+                });
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_strings,
@@ -235,6 +303,8 @@ pub fn run() {
             open_log,
             system_memory,
             pack_version,
+            check_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
