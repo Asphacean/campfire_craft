@@ -125,7 +125,7 @@ Plans:
   4. Download and launch show the current step and file/byte progress instead of an unexplained wait
   5. Wrong password, unreachable server, failed Java download and full disk each show a plain-language message naming the log file; server status and launcher self-update work on startup
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 **UI hint**: yes
 
 Plans:
@@ -139,7 +139,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 04-03-PLAN.md — Mojang's own files SHA-1 verified, Forge installed headlessly via the profile stub, and a complete launch command with the token handoff and a seeded server list (LNCH-04)
+- [x] 04-03-PLAN.md — Mojang's own files SHA-1 verified, Forge installed headlessly via the profile stub, and a complete launch command with the token handoff and a seeded server list (LNCH-04)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Playable Server on the Pi | 4/4 | In Progress|  |
 | 2. Accounts & Enforced Auth | 3/3 | In Progress|  |
 | 3. Modpack Distribution | 3/3 | In Progress|  |
-| 4. Launcher | 2/4 | In Progress|  |
+| 4. Launcher | 3/4 | In Progress|  |
 | 5. Release to Friends | 0/TBD | Not started | - |
 
 ## Requirement Coverage
