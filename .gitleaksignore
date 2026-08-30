@@ -1,0 +1,14 @@
+# Task 1 (Phase 5, plan 05-01): every finding gitleaks' full-history scan
+# raised was triaged by hand against the actual commit content (never
+# allowlisted on the pattern name alone). Both survivors below are the
+# same false positive: gitleaks' generic-api-key rule tripping on the
+# hyphenated word "argon2-verify" inside design-doc prose describing the
+# Phase 2 auth service — no credential, token, or key material of any kind
+# is present at either location. Re-verified 2026-08-30 against the exact
+# commit + line the fingerprint names.
+54460bd3664ce9529b0ba34ff4d34ddd08fa3242:.planning/phases/02-accounts-enforced-auth/02-01-SUMMARY.md:generic-api-key:33
+
+# Same false positive ("argon2-verify" in prose), a different commit/file:
+# this is 02-01-PLAN.md's own design narrative for token validation, not a
+# secret.
+dc0add2fd1455a18a63a107c32b0e3062dff8787:.planning/phases/02-accounts-enforced-auth/02-01-PLAN.md:generic-api-key:155
