@@ -22,7 +22,7 @@ result: [pending]
 
 ### 2. Apple Silicon: Gatekeeper bypass + play + rendering (REL-02, REL-03; closes 04-UAT 4)
 expected: Download aarch64 .dmg; right-click Open / xattr -cr "/Applications/Campfire-Launcher.app"; Rosetta prompt OK; game renders and plays; note framerate.
-result: [pending]
+result: [issue] App opens, but a spurious "Update Available" modal appears on 0.1.0 (feed is also 0.1.0); "Update Now" flashes "Launching" then the modal vanishes with no effect; "Later" button does nothing. Reported 2026-08-31.
 
 ### 3. Next release exercises the CR-01 checksum gate (non-blocking follow-up)
 expected: On the next scripts/release.sh tag, the publish job verifies assets against the build job's checksums artifact before signing (watch the run once).
@@ -36,7 +36,7 @@ result: [pending]
 
 total: 4
 passed: 0
-issues: 0
+issues: 1
 pending: 4
 skipped: 0
 blocked: 0
