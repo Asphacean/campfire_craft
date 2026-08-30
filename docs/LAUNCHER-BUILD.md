@@ -67,7 +67,7 @@ cargo tauri build --no-bundle   # a plain campfire-launcher.exe, no installer
 directly, with no NSIS/MSI installer wrapped around it — the fastest way
 to get something runnable while iterating. Drop `--no-bundle` (just
 `cargo tauri build`) once you want the real installer artifact
-(`campfire-launcher_<version>_x64-setup.exe`) — the shape
+(`Campfire-Launcher_<version>_x64-setup.exe`) — the shape
 `scripts/publish-launcher.sh` expects on this platform.
 
 **The installer will show a Windows SmartScreen warning ("Windows
