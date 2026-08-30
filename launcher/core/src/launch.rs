@@ -264,7 +264,7 @@ fn log_launch_command(argv: &[String], token: &str) {
 /// — the only removable part of this whole command line.
 pub fn build_launch_command(
     session: &Session,
-    ram_gb: u32,
+    ram_gb: f32,
     merged: &MergedVersion,
     java_path: &Path,
     autoconnect: bool,
@@ -280,9 +280,15 @@ pub fn build_launch_command(
         .to_string_lossy()
         .to_string();
 
+    // The RAM slider moves in half-gigabyte steps (D-06), and the JVM's
+    // own `-Xmx`/`-Xms` flags reject a fractional `G` suffix outright
+    // (confirmed live on this Pi: `-Xmx7.5G` is "Invalid maximum heap
+    // size") — megabytes is the smallest unit that represents a half
+    // gigabyte as a whole number.
+    let ram_mb = (ram_gb * 1024.0).round() as u64;
     let mut argv = vec![java_path.to_string_lossy().to_string()];
-    argv.push(format!("-Xms{ram_gb}G"));
-    argv.push(format!("-Xmx{ram_gb}G"));
+    argv.push(format!("-Xms{ram_mb}M"));
+    argv.push(format!("-Xmx{ram_mb}M"));
     argv.extend(JVM_FLAGS.iter().map(|s| s.to_string()));
     argv.push(format!("-Dcampfire.nick={}", session.nick));
     argv.push(format!("-Dcampfire.token={}", session.token));

@@ -1,12 +1,12 @@
 // The whole single-screen frontend: form state, button handlers, status
-// polling. No bundler and no ES module syntax anywhere — everything
-// reaches Rust through window.__TAURI__.core.invoke (app.withGlobalTauri
-// in tauri.conf.json).
-// This plan brings the auth half of the UI-SPEC to life; the RAM slider,
-// progress bar, and Play flow stay inert (hidden) until a later wave wires
-// manifest sync / Java / Forge / launch.
+// polling, the RAM slider, the Play sequence and its progress channel,
+// Verify files, Game folder, Open log, and the update dialog (wave 4 adds
+// the update dialog in a later task). No bundler and no ES module syntax
+// anywhere — everything reaches Rust through window.__TAURI__.core.invoke
+// (app.withGlobalTauri in tauri.conf.json).
 
 const invoke = window.__TAURI__.core.invoke;
+const Channel = window.__TAURI__.core.Channel;
 
 const el = {
   statusPill: document.getElementById("status-pill"),
@@ -22,14 +22,32 @@ const el = {
   sessionLine: document.getElementById("session-line"),
   sessionNick: document.getElementById("session-nick"),
   logoutBtn: document.getElementById("logout-btn"),
+  ramBlock: document.getElementById("ram-block"),
+  ramSlider: document.getElementById("ram-slider"),
+  ramValue: document.getElementById("ram-value"),
+  ramWarning: document.getElementById("ram-warning"),
+  progressArea: document.getElementById("progress-area"),
+  stepLabel: document.getElementById("step-label"),
+  progressBar: document.getElementById("progress-bar"),
+  infoBanner: document.getElementById("info-banner"),
+  playBtn: document.getElementById("play-btn"),
+  secondaryButtons: document.getElementById("secondary-buttons"),
+  gameFolderBtn: document.getElementById("game-folder-btn"),
+  verifyFilesBtn: document.getElementById("verify-files-btn"),
   versionFooter: document.getElementById("version-footer"),
 };
 
 let STRINGS = {};
+let currentNick = null;
+let systemMemory = null;
+let infoDismissTimer = null;
 
 function applyStaticCopy() {
   el.loginBtn.textContent = STRINGS.ctaLogin;
   el.registerBtn.textContent = STRINGS.ctaRegister;
+  el.playBtn.textContent = STRINGS.ctaPlay;
+  el.gameFolderBtn.textContent = STRINGS.btnGameFolder;
+  el.verifyFilesBtn.textContent = STRINGS.btnVerifyFiles;
 }
 
 function showError(message) {
@@ -40,6 +58,19 @@ function showError(message) {
 function clearError() {
   el.errorBanner.hidden = true;
   el.errorText.textContent = "";
+}
+
+// The file-repair message (D-08): informational, not alarming, auto-
+// dismisses after about four seconds — reuses no state from the error
+// banner at all, so a real error can never be silently swallowed by a
+// stale dismiss timer.
+function showInfo(message) {
+  el.infoBanner.textContent = message;
+  el.infoBanner.hidden = false;
+  clearTimeout(infoDismissTimer);
+  infoDismissTimer = setTimeout(() => {
+    el.infoBanner.hidden = true;
+  }, 4000);
 }
 
 function mapErrorCode(code) {
@@ -64,6 +95,26 @@ function mapErrorCode(code) {
   }
 }
 
+// The Play/Verify sequence's own stable codes (`campfire_launcher_core
+// ::play::PlayError::code`) — a distinct, smaller vocabulary from the auth
+// commands' codes above; every sentence still comes from `strings.rs`.
+function mapPlayErrorCode(code) {
+  switch (code) {
+    case "wrong_password":
+      return STRINGS.errorWrongPassword;
+    case "server_unreachable":
+      return STRINGS.errorServerUnreachable;
+    case "java_error":
+      return STRINGS.errorJavaDownloadFailed;
+    case "disk_full":
+      return STRINGS.errorDiskFull;
+    case "session_expired":
+      return STRINGS.errorSessionExpired;
+    default:
+      return STRINGS.errorGeneric;
+  }
+}
+
 function setFormBusy(busy, loadingLabel, activeBtn) {
   el.loginBtn.disabled = busy;
   el.registerBtn.disabled = busy;
@@ -76,15 +127,42 @@ function setFormBusy(busy, loadingLabel, activeBtn) {
   }
 }
 
+// D-06: the slider's value display and the >70%-of-physical-RAM warning —
+// a sentence, never a blocking dialog; Play still works at that setting.
+function updateRamDisplay() {
+  const value = parseFloat(el.ramSlider.value);
+  el.ramValue.textContent = `${value} GB`;
+  const warn = systemMemory != null && value > systemMemory.total_gb * 0.7;
+  el.ramSlider.dataset.warn = warn ? "true" : "false";
+  if (warn) {
+    el.ramWarning.textContent = STRINGS.ramWarning;
+    el.ramWarning.hidden = false;
+  } else {
+    el.ramWarning.hidden = true;
+  }
+}
+
+el.ramSlider.addEventListener("input", updateRamDisplay);
+
 function showLoggedIn(nick) {
+  currentNick = nick;
   el.form.hidden = true;
   el.sessionLine.hidden = false;
   el.sessionNick.textContent = nick;
+  el.ramBlock.hidden = false;
+  el.playBtn.hidden = false;
+  el.secondaryButtons.hidden = false;
+  updateRamDisplay();
 }
 
 function showForm(prefillNick) {
+  currentNick = null;
   el.sessionLine.hidden = true;
   el.form.hidden = false;
+  el.ramBlock.hidden = true;
+  el.playBtn.hidden = true;
+  el.secondaryButtons.hidden = true;
+  el.progressArea.hidden = true;
   if (prefillNick) {
     el.nickInput.value = prefillNick;
   }
@@ -173,11 +251,144 @@ el.logoutBtn.addEventListener("click", async () => {
 });
 
 el.openLogBtn.addEventListener("click", async () => {
-  const path = await invoke("get_log_path");
-  // Actually revealing the file in the OS file manager is a later-wave
-  // dependency (tauri-plugin-opener, added alongside "Game folder") — for
-  // now this at least tells the person exactly where it is.
-  window.alert(`Log file: ${path}`);
+  try {
+    await invoke("open_log");
+  } catch {
+    // Best-effort: the button's whole job is convenience, never a
+    // precondition for anything else in the window.
+  }
+});
+
+// --- Play: the whole sequence over a Tauri channel (D-07/LNCH-05) -------
+
+let lastStep = { name: "", current: 0, total: 0 };
+let lastRate = null;
+
+function renderStepLabel() {
+  let text = lastStep.total > 0 ? `${lastStep.name} ${lastStep.current}/${lastStep.total}` : lastStep.name;
+  if (lastRate != null) {
+    text += ` · ${lastRate}`;
+  }
+  el.stepLabel.textContent = text;
+  el.progressBar.value = lastStep.total > 0 ? Math.round((lastStep.current / lastStep.total) * 100) : 0;
+}
+
+function formatRate(bytesPerSec) {
+  if (bytesPerSec >= 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+  if (bytesPerSec >= 1024) {
+    return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+  }
+  return `${bytesPerSec} B/s`;
+}
+
+// Fed by the real work, not a guess: every `Step`/`Bytes` event this
+// handler receives came straight from the core's own sync/Java/Mojang/
+// Forge progress reporting, over the channel, never the event bus.
+function handleProgress(msg) {
+  switch (msg.event) {
+    case "Step":
+      lastStep = msg.data;
+      lastRate = null;
+      renderStepLabel();
+      break;
+    case "Bytes":
+      lastRate = formatRate(msg.data.per_sec);
+      renderStepLabel();
+      break;
+    case "Done":
+      // The invoke() promise's own resolution (below) owns button/label
+      // restoration; nothing further to render here.
+      break;
+    case "Failed":
+      // D-08: a failed step stops the bar where it is rather than
+      // resetting or continuing — the invoke() promise's rejection (which
+      // carries the full { code, reopen_form } detail, unlike this event)
+      // owns the error banner and button restoration.
+      break;
+    default:
+      break;
+  }
+}
+
+function setPlayBusy(busy) {
+  el.playBtn.disabled = busy;
+  el.gameFolderBtn.disabled = busy;
+  el.verifyFilesBtn.disabled = busy;
+  el.playBtn.textContent = busy ? STRINGS.loadingLaunching : STRINGS.ctaPlay;
+}
+
+el.playBtn.addEventListener("click", async () => {
+  clearError();
+  setPlayBusy(true);
+  lastStep = { name: "", current: 0, total: 0 };
+  lastRate = null;
+  el.progressArea.hidden = false;
+  el.progressBar.value = 0;
+  el.stepLabel.textContent = "";
+
+  const channel = new Channel();
+  channel.onmessage = handleProgress;
+
+  try {
+    await invoke("play", { onEvent: channel, nick: currentNick, ram: parseFloat(el.ramSlider.value) });
+    // Success: the game is spawned and the launcher window stays open
+    // behind it (D-18) — nothing further to render.
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err) {
+      showError(mapPlayErrorCode(err.code));
+      if (err.reopen_form) {
+        showForm(currentNick);
+      }
+    } else {
+      showError(STRINGS.errorGeneric);
+    }
+  } finally {
+    setPlayBusy(false);
+  }
+});
+
+// --- Verify files / Game folder ------------------------------------------
+
+function setVerifyBusy(busy) {
+  el.verifyFilesBtn.disabled = busy;
+  el.playBtn.disabled = busy;
+  el.gameFolderBtn.disabled = busy;
+  el.verifyFilesBtn.textContent = busy ? STRINGS.loadingVerifying : STRINGS.btnVerifyFiles;
+}
+
+el.verifyFilesBtn.addEventListener("click", async () => {
+  clearError();
+  setVerifyBusy(true);
+  lastStep = { name: "", current: 0, total: 0 };
+  lastRate = null;
+  el.progressArea.hidden = false;
+  el.progressBar.value = 0;
+  el.stepLabel.textContent = "";
+
+  const channel = new Channel();
+  channel.onmessage = handleProgress;
+
+  try {
+    const report = await invoke("verify_files", { onEvent: channel });
+    if (report.repaired > 0) {
+      showInfo(STRINGS.infoFilesRepaired);
+    }
+  } catch {
+    showError(STRINGS.errorGeneric);
+  } finally {
+    setVerifyBusy(false);
+    el.progressArea.hidden = true;
+  }
+});
+
+el.gameFolderBtn.addEventListener("click", async () => {
+  try {
+    await invoke("open_game_folder");
+  } catch {
+    // Best-effort, same as Open log.
+  }
 });
 
 (async () => {
@@ -185,7 +396,11 @@ el.openLogBtn.addEventListener("click", async () => {
   applyStaticCopy();
 
   const version = await invoke("get_version");
-  el.versionFooter.textContent = `Launcher ${version}`;
+  const pack = await invoke("pack_version");
+  el.versionFooter.textContent = `Launcher ${version} · Pack ${pack ?? "—"}`;
+
+  systemMemory = await invoke("system_memory");
+  el.ramSlider.value = systemMemory.recommended_gb;
 
   await tryRestoreSession();
   await pollStatus();

@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::http::{campfire_client, CAMPFIRE_BASE_URL};
+use crate::http::{campfire_base_url, campfire_client};
 use crate::log;
 
 /// The credential-store service name every `keyring::Entry` in this
@@ -71,7 +71,7 @@ struct LoginResponseBody {
 pub async fn register(nick: &str, password: &str) -> Result<(), AuthError> {
     log::info(&format!("register: nick={nick}"));
     let resp = campfire_client()
-        .post(format!("{CAMPFIRE_BASE_URL}/api/register"))
+        .post(format!("{}/api/register", campfire_base_url()))
         .json(&serde_json::json!({ "nick": nick, "password": password }))
         .send()
         .await
@@ -92,7 +92,7 @@ pub async fn register(nick: &str, password: &str) -> Result<(), AuthError> {
 pub async fn login(nick: &str, password: &str) -> Result<(Session, String), AuthError> {
     log::info(&format!("login: nick={nick}"));
     let resp = campfire_client()
-        .post(format!("{CAMPFIRE_BASE_URL}/api/login"))
+        .post(format!("{}/api/login", campfire_base_url()))
         .json(&serde_json::json!({ "nick": nick, "password": password }))
         .send()
         .await
@@ -127,7 +127,7 @@ pub async fn login(nick: &str, password: &str) -> Result<(Session, String), Auth
 pub async fn refresh(nick: &str, refresh_token: &str) -> Result<(Session, String), AuthError> {
     log::info(&format!("refresh: nick={nick}"));
     let resp = campfire_client()
-        .post(format!("{CAMPFIRE_BASE_URL}/api/refresh"))
+        .post(format!("{}/api/refresh", campfire_base_url()))
         .json(&serde_json::json!({ "nick": nick, "refresh": refresh_token }))
         .send()
         .await
@@ -190,6 +190,17 @@ pub fn load_refresh() -> Option<(String, String)> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, &nick).ok()?;
     let refresh_token = entry.get_password().ok()?;
     Some((nick, refresh_token))
+}
+
+/// Reads the credential-store entry for a specific, already-known nick
+/// directly — bypassing the "last nick" sidecar file `load_refresh` uses.
+/// What `play`/`campfire-cli play` need: the caller already knows which
+/// nick it's playing as (the collapsed logged-in state, or an explicit
+/// `--nick` on the CLI), so there's no cold-start "which nick" question to
+/// answer here, only "does the credential store still have one for it."
+pub fn load_refresh_for(nick: &str) -> Option<String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, nick).ok()?;
+    entry.get_password().ok()
 }
 
 /// Removes the stored refresh token for `nick` (log out). Never errors on

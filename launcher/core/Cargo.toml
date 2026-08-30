@@ -58,6 +58,12 @@ sha1_smol = "1"
 # RustCrypto crate (same publisher/org as the already-audited `sha2`) beats
 # hand-rolling MD5 for an identity-bearing computation.
 md-5 = "0.10"
+# D-06's RAM-slider default: one call for total physical memory, next to
+# the other machine facts this crate already resolves for itself, rather
+# than two platform-specific syscalls behind `cfg` blocks (04-04-PLAN.md's
+# discretion table; checked against crates.io during planning: OK, 3.4M
+# downloads/week, first published 2015).
+sysinfo = "0.39"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # sysctlbyname("sysctl.proc_translated") for Rosetta detection — macOS only,

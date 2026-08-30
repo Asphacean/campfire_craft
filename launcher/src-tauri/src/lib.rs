@@ -3,8 +3,16 @@
 //! to a stable string the frontend switches on, log, return. The password
 //! crosses this boundary as a command argument and is dropped at the end
 //! of the call; nothing here stores it.
+//!
+//! D-18/LNCH-05: `play` and `verify_files` are the only two commands that
+//! stream progress — both adapt `campfire_launcher_core`'s plain
+//! `ProgressSink` closure to a `tauri::ipc::Channel`, never the general
+//! event bus (04-RESEARCH.md's "Don't Hand-Roll" row).
 
-use campfire_launcher_core::{auth, status, strings};
+use campfire_launcher_core::progress::Progress;
+use campfire_launcher_core::{auth, manifest, play as play_core, status, strings, system};
+use tauri::ipc::Channel;
+use tauri_plugin_opener::OpenerExt;
 
 /// Returns this crate's own version, so `main.js` can prove the bridge
 /// works by writing the result into the version footer on load.
@@ -89,19 +97,129 @@ fn logout(nick: String) {
     auth::logout(&nick);
 }
 
-/// Where `launcher.log` lives, so the "Open log" button has something to
-/// show. Actually revealing it in the OS file manager is `tauri-plugin-
-/// opener` territory — out of scope for this plan (no npm/new dependency
-/// justified for one button in the tracer); wave 4, which also wires
-/// "Game folder", is the natural place to add it.
+/// Where `launcher.log` lives — still exposed for anything that just wants
+/// the path (e.g. a future log-tail feature); the "Open log" button itself
+/// now uses [`open_log`], which actually opens it.
 #[tauri::command]
 fn get_log_path() -> String {
     campfire_launcher_core::paths::log_path().to_string_lossy().to_string()
 }
 
+/// D-18: the play sequence over a channel, streaming the real step/byte
+/// events `campfire_launcher_core::play::play` reports — never the event
+/// bus (T-04-04's channel requirement). The RAM figure is clamped to the
+/// slider's own 3..=10 range here, in Rust, before it ever reaches the
+/// command builder (T-04-04-07) — the slider element's own `min`/`max`
+/// attributes are a UI courtesy, not the enforcement.
+#[derive(serde::Serialize)]
+struct PlayErrorView {
+    code: String,
+    reopen_form: bool,
+}
+
+impl From<play_core::PlayError> for PlayErrorView {
+    fn from(e: play_core::PlayError) -> Self {
+        Self {
+            code: e.code().to_string(),
+            reopen_form: e.reopen_form(),
+        }
+    }
+}
+
+#[tauri::command]
+async fn play(on_event: Channel<Progress>, nick: String, ram: f32) -> Result<(), PlayErrorView> {
+    let ram = ram.clamp(3.0, 10.0);
+    let sink = campfire_launcher_core::progress::sink_from(move |p: Progress| {
+        let _ = on_event.send(p);
+    });
+    // Run the whole sequence on its own `tokio::spawn`ed task rather than
+    // `.await`ing `play_core::play` directly in this command's own async
+    // body: the deep chain it drives internally (`manifest::sync`'s
+    // `buffer_unordered` download batch, in particular) tripped a known
+    // rustc HRTB false-positive — "implementation of `FnOnce`/`Send` is
+    // not general enough" — the moment it was reachable from
+    // `tauri::generate_handler!`'s own command-dispatch macro. A spawned
+    // task's `JoinHandle<T>` carries none of that internal type
+    // complexity across the boundary the macro inspects; `nick`/`ram`/
+    // `sink` are all owned, so the spawned future is genuinely `'static`.
+    let joined = tokio::spawn(async move { play_core::play(&nick, ram, true, sink).await })
+        .await
+        .map_err(|_| PlayErrorView {
+            code: "generic".to_string(),
+            reopen_form: false,
+        })?;
+    joined.map(|_| ()).map_err(PlayErrorView::from)
+}
+
+/// "Verify files": the same core `manifest::verify` sync used, over the
+/// same channel mechanism as `play`, returning the repaired count for the
+/// informational (non-error) banner.
+#[derive(serde::Serialize)]
+struct VerifyReportView {
+    checked: u32,
+    repaired: u32,
+}
+
+#[tauri::command]
+async fn verify_files(on_event: Channel<Progress>) -> Result<VerifyReportView, String> {
+    let sink = campfire_launcher_core::progress::sink_from(move |p: Progress| {
+        let _ = on_event.send(p);
+    });
+    manifest::verify(sink)
+        .await
+        .map(|r| VerifyReportView {
+            checked: r.checked,
+            repaired: r.repaired,
+        })
+        .map_err(|e| format!("{e:?}"))
+}
+
+/// "Game folder": reveals the install directory in the OS file manager.
+#[tauri::command]
+fn open_game_folder(app: tauri::AppHandle) -> Result<(), String> {
+    app.opener()
+        .reveal_item_in_dir(campfire_launcher_core::paths::game_dir())
+        .map_err(|e| e.to_string())
+}
+
+/// "Open log": opens `launcher.log` itself with the OS default handler —
+/// distinct from `open_game_folder`, which only reveals a directory.
+#[tauri::command]
+fn open_log(app: tauri::AppHandle) -> Result<(), String> {
+    let path = campfire_launcher_core::paths::log_path().to_string_lossy().to_string();
+    app.opener().open_path(path, None::<String>).map_err(|e| e.to_string())
+}
+
+/// D-06: the slider's own machine facts — total physical memory and the
+/// formula's recommended default — computed in Rust, not guessed in JS.
+#[derive(serde::Serialize)]
+struct SystemMemoryView {
+    total_gb: f32,
+    recommended_gb: f32,
+}
+
+#[tauri::command]
+fn system_memory() -> SystemMemoryView {
+    let total = system::total_memory_gb();
+    let recommended = system::recommended_ram_gb(total);
+    SystemMemoryView {
+        total_gb: total,
+        recommended_gb: recommended,
+    }
+}
+
+/// The version footer's other half: the `pack_version` the last
+/// successful sync saw, cached to disk so it survives a restart even
+/// before the first sync of this session completes.
+#[tauri::command]
+fn pack_version() -> Option<String> {
+    manifest::cached_pack_version()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_strings,
@@ -111,6 +229,12 @@ pub fn run() {
             restore_session,
             logout,
             get_log_path,
+            play,
+            verify_files,
+            open_game_folder,
+            open_log,
+            system_memory,
+            pack_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

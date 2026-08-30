@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window — every custom command (login, play, verify_files, ...) is invoke_handler-registered and unaffected by this file; only the two opener-plugin commands the window actually calls are ACL-gated (T-04-04-08).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:allow-reveal-item-in-dir",
+    "opener:allow-open-path"
+  ]
+}

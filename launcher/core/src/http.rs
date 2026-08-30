@@ -51,6 +51,19 @@ pub fn public_client() -> reqwest::Client {
 /// The base URL every `campfire_client()` call in this crate uses.
 pub const CAMPFIRE_BASE_URL: &str = "https://mc.campfire.pub:8444";
 
+/// `CAMPFIRE_BASE_URL`, or `CAMPFIRE_BASE_URL_OVERRIDE` if set — a
+/// test-only escape hatch, the same convention as `CAMPFIRE_HOME`/
+/// `CAMPFIRE_FORGE_JAVA`/`CAMPFIRE_JAVA_FORCE_CHECKSUM_MISMATCH`. What
+/// lets `campfire-cli play`'s own acceptance testing point the pinned
+/// client at a dead port to prove the unreachable-server sentence for
+/// real, without touching the production host. The pinned CA is
+/// unaffected either way — an override pointed at a non-`campfire.pub`
+/// host still fails TLS verification, which is exactly the "unreachable"
+/// case this exists to exercise.
+pub fn campfire_base_url() -> String {
+    std::env::var("CAMPFIRE_BASE_URL_OVERRIDE").unwrap_or_else(|_| CAMPFIRE_BASE_URL.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::EMBEDDED_CA_PEM;

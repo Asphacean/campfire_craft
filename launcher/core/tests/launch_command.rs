@@ -133,7 +133,7 @@ fn built_command_contains_both_system_properties_with_the_right_values() {
     let merged = fake_merged("1.12.2-forge-test");
     let session = fake_session("TestNick", "the-real-token-value");
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 6, &merged, &java, true).unwrap();
+    let argv = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
     assert!(argv.contains(&"-Dcampfire.nick=TestNick".to_string()));
     assert!(argv.contains(&"-Dcampfire.token=the-real-token-value".to_string()));
 }
@@ -144,9 +144,23 @@ fn xmx_reflects_the_requested_ram() {
     let merged = fake_merged("1.12.2-forge-test-ram");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 8, &merged, &java, true).unwrap();
-    assert!(argv.contains(&"-Xmx8G".to_string()));
-    assert!(argv.contains(&"-Xms8G".to_string()));
+    let argv = build_launch_command(&session, 8.0, &merged, &java, true).unwrap();
+    assert!(argv.contains(&"-Xmx8192M".to_string()));
+    assert!(argv.contains(&"-Xms8192M".to_string()));
+}
+
+#[test]
+fn xmx_reflects_a_half_gigabyte_step_in_megabytes() {
+    // The RAM slider moves in 0.5GB steps; the JVM rejects a fractional
+    // `G` suffix (`-Xmx7.5G` is "Invalid maximum heap size", confirmed
+    // live on this Pi) — megabytes is what actually represents 7.5GB.
+    let _home = ScratchHome::new("ram-half-step");
+    let merged = fake_merged("1.12.2-forge-test-ram-half");
+    let session = fake_session("TestNick", "tok");
+    let java = fake_java_path();
+    let argv = build_launch_command(&session, 7.5, &merged, &java, true).unwrap();
+    assert!(argv.contains(&"-Xmx7680M".to_string()));
+    assert!(argv.contains(&"-Xms7680M".to_string()));
 }
 
 #[test]
@@ -155,7 +169,7 @@ fn main_class_and_tweak_class_are_both_present() {
     let merged = fake_merged("1.12.2-forge-test-mc");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 6, &merged, &java, true).unwrap();
+    let argv = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
     assert!(argv.contains(&"net.minecraft.launchwrapper.Launch".to_string()));
     assert!(argv.iter().any(|a| a.contains("FMLTweaker")));
 }
@@ -166,7 +180,7 @@ fn every_classpath_entry_exists_on_disk_on_a_bootstrapped_directory() {
     let merged = fake_merged("1.12.2-forge-test-cp");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 6, &merged, &java, true).unwrap();
+    let argv = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
     let cp_pos = argv.iter().position(|a| a == "-cp").unwrap();
     let cp = &argv[cp_pos + 1];
     for entry in std::env::split_paths(cp) {
@@ -182,7 +196,7 @@ fn missing_classpath_entry_is_rejected_rather_than_silently_built() {
     merged.client_jar = campfire_launcher_core::paths::versions_dir().join("nope").join("nope.jar");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    assert!(build_launch_command(&session, 6, &merged, &java, true).is_err());
+    assert!(build_launch_command(&session, 6.0, &merged, &java, true).is_err());
 }
 
 #[test]
@@ -191,7 +205,7 @@ fn no_argument_contains_an_unsubstituted_placeholder() {
     let merged = fake_merged("1.12.2-forge-test-ph");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 6, &merged, &java, true).unwrap();
+    let argv = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
     assert!(!argv.iter().any(|a| a.contains("${")));
 }
 
@@ -202,7 +216,7 @@ fn the_logged_form_redacts_the_token_while_the_built_form_contains_it() {
     let token = "super-secret-game-token-value";
     let session = fake_session("TestNick", token);
     let java = fake_java_path();
-    let argv = build_launch_command(&session, 6, &merged, &java, true).unwrap();
+    let argv = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
 
     assert!(argv.iter().any(|a| a.contains(token)), "built argv must contain the real token");
 
@@ -218,7 +232,7 @@ fn a_java_path_outside_the_runtime_directory_is_rejected() {
     let session = fake_session("TestNick", "tok");
     let outside = std::env::temp_dir().join("not-under-runtime").join("java");
     write_dummy_file(&outside);
-    assert!(build_launch_command(&session, 6, &merged, &outside, true).is_err());
+    assert!(build_launch_command(&session, 6.0, &merged, &outside, true).is_err());
 }
 
 #[test]
@@ -227,8 +241,8 @@ fn autoconnect_off_removes_only_the_two_trailing_arguments() {
     let merged = fake_merged("1.12.2-forge-test-ac");
     let session = fake_session("TestNick", "tok");
     let java = fake_java_path();
-    let with_ac = build_launch_command(&session, 6, &merged, &java, true).unwrap();
-    let without_ac = build_launch_command(&session, 6, &merged, &java, false).unwrap();
+    let with_ac = build_launch_command(&session, 6.0, &merged, &java, true).unwrap();
+    let without_ac = build_launch_command(&session, 6.0, &merged, &java, false).unwrap();
 
     assert!(with_ac.contains(&"--server".to_string()));
     assert!(with_ac.contains(&"mc.campfire.pub".to_string()));

@@ -14,9 +14,9 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use campfire_launcher_core::{auth, forge, http, java, launch, manifest, mojang, progress::Progress, status};
+use campfire_launcher_core::{auth, forge, http, java, launch, manifest, mojang, play, progress::Progress, status, system};
 
-const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n              launch-cmd --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              launch --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n\n\
+const HELP_TEXT: &str = "usage: campfire-cli status|register <nick>|login <nick>|refresh|keyring-selftest|pin-check\n              sync [--dir <path>]|verify [--dir <path>]\n              java-fetch [--target windows-x64|mac-x64|mac-arm64] [--dir <path>]|java-probe\n              vanilla [--dir <path>]|forge [--dir <path>]\n              launch-cmd --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              launch --nick <n> --ram <g> [--token <t>] [--target ...] [--dir <path>]\n              play --nick <n> --ram <g> [--no-spawn] [--dir <path>]\n              system-memory\n\n\
 Passwords are always read from stdin (never a command-line argument),\n\
 so they never appear in the process table or shell history.";
 
@@ -47,6 +47,23 @@ fn take_flag_value(args: &mut Vec<String>, flag: &str) -> Option<String> {
     let value = args.remove(pos + 1);
     args.remove(pos);
     Some(value)
+}
+
+/// Removes a bare boolean `flag` from `args`, if present, and reports
+/// whether it was there.
+fn take_bool_flag(args: &mut Vec<String>, flag: &str) -> bool {
+    if let Some(pos) = args.iter().position(|a| a == flag) {
+        args.remove(pos);
+        true
+    } else {
+        false
+    }
+}
+
+/// Wraps `print_progress` as an owned `ProgressSink` — every headless
+/// subcommand that streams progress shares this one construction.
+fn progress_sink() -> campfire_launcher_core::progress::ProgressSink {
+    campfire_launcher_core::progress::sink_from(print_progress)
 }
 
 fn print_progress(p: Progress) {
@@ -114,6 +131,8 @@ async fn main() {
         "forge" => cmd_forge().await,
         "launch-cmd" => cmd_launch_cmd(&mut args, false).await,
         "launch" => cmd_launch_cmd(&mut args, true).await,
+        "play" => cmd_play(&mut args).await,
+        "system-memory" => cmd_system_memory(),
         _ => usage(),
     }
 }
@@ -259,7 +278,7 @@ async fn cmd_pin_check() {
 }
 
 async fn cmd_sync() {
-    match manifest::sync(&print_progress).await {
+    match manifest::sync(progress_sink()).await {
         Ok(report) => {
             println!(
                 "SYNC OK — checked={} downloaded={} deleted={} seeded={} bytes={}",
@@ -274,7 +293,7 @@ async fn cmd_sync() {
 }
 
 async fn cmd_verify() {
-    match manifest::verify(&print_progress).await {
+    match manifest::verify(progress_sink()).await {
         Ok(report) => {
             println!(
                 "VERIFY OK — checked={} repaired={}",
@@ -321,7 +340,7 @@ async fn cmd_java_fetch(target_arg: Option<&str>) {
 }
 
 async fn cmd_vanilla() {
-    match mojang::ensure_vanilla(&print_progress).await {
+    match mojang::ensure_vanilla(progress_sink()).await {
         Ok(r) => {
             println!(
                 "version={} libs_included={} libs_excluded={} natives_resolved={} asset_index={} asset_objects={} bytes={}",
@@ -343,7 +362,7 @@ async fn cmd_vanilla() {
 }
 
 async fn cmd_forge() {
-    match forge::ensure_forge(&print_progress).await {
+    match forge::ensure_forge(progress_sink()).await {
         Ok((report, merged)) => {
             println!(
                 "installer_sha256_ok={} already_installed={} version={} merged_libraries={} classpath_len={}",
@@ -380,7 +399,7 @@ async fn resolve_cli_java(target_arg: Option<&str>) -> java::Target {
 
 async fn cmd_launch_cmd(args: &mut Vec<String>, spawn_it: bool) {
     let nick = take_flag_value(args, "--nick").unwrap_or_else(|| usage());
-    let ram: u32 = take_flag_value(args, "--ram")
+    let ram: f32 = take_flag_value(args, "--ram")
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| usage());
     let token = take_flag_value(args, "--token").unwrap_or_else(|| "0".to_string());
@@ -397,7 +416,7 @@ async fn cmd_launch_cmd(args: &mut Vec<String>, spawn_it: bool) {
     // one element per line, and is redirected straight into acceptance
     // checks — this call is expected to be the already-installed fast path
     // (progress spam would land in the same stream as the argv otherwise).
-    let (_, merged) = match forge::ensure_forge(&campfire_launcher_core::progress::noop_sink).await {
+    let (_, merged) = match forge::ensure_forge(campfire_launcher_core::progress::noop_sink()).await {
         Ok(v) => v,
         Err(e) => {
             eprintln!("FATAL: forge not installed — run `campfire-cli forge` first: {e:?}");
@@ -463,3 +482,55 @@ fn cmd_java_probe() {
     }
 }
 
+
+/// The whole Play sequence, headlessly: refresh → sync → Java → Mojang →
+/// Forge → build the command → spawn (unless `--no-spawn`). This is what
+/// proves the orchestration end to end on a machine with no display —
+/// `--nick` must already have a stored refresh token (`campfire-cli login
+/// <nick>` first).
+async fn cmd_play(args: &mut Vec<String>) {
+    let nick = take_flag_value(args, "--nick").unwrap_or_else(|| usage());
+    let ram: f32 = take_flag_value(args, "--ram")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| usage());
+    let no_spawn = take_bool_flag(args, "--no-spawn");
+
+    match play::play(&nick, ram, !no_spawn, progress_sink()).await {
+        Ok(outcome) => {
+            // Redact the real token everywhere it appears in the printed
+            // argv, one element per line — the token itself is real and
+            // was really used to build this exact command, only the
+            // printed proof withholds it.
+            let token = outcome.session.token.as_str();
+            for arg in &outcome.argv {
+                if !token.is_empty() && arg.contains(token) {
+                    println!("{}", arg.replace(token, "<redacted>"));
+                } else {
+                    println!("{arg}");
+                }
+            }
+            println!("PLAY OK — nick={} spawned={}", outcome.session.nick, !no_spawn);
+        }
+        Err(e) => {
+            // Deliberately no `{e:?}` here: this is the one FATAL message
+            // in the whole CLI that must read exactly like the window
+            // would show it — a plain sentence, never a Rust type name, a
+            // `reqwest` string, or an HTTP status number. Every other
+            // subcommand in this file prints its error's Debug form
+            // because it's a developer-facing proof harness; `play` is
+            // additionally the acceptance-tested proof that the mapping
+            // itself never leaks internals.
+            let code = e.code();
+            let reopen = e.reopen_form();
+            let sentence = campfire_launcher_core::strings::play_error_sentence(code);
+            eprintln!("FATAL: {sentence} (code={code}, reopen_form={reopen})");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_system_memory() {
+    let total = system::total_memory_gb();
+    let recommended = system::recommended_ram_gb(total);
+    println!("total_gb={total:.2} recommended_gb={recommended:.1}");
+}

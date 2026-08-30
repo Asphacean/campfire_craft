@@ -402,6 +402,35 @@ struct DownloadJob {
     sha1: String,
 }
 
+/// One job's whole unit of work: download, report a `Step`. A **named**
+/// `async fn`, not a closure returning an inline `async move` block — see
+/// `manifest.rs`'s `download_one_and_report` for why: the closure form
+/// tripped a known rustc HRTB false-positive ("implementation of
+/// `FnOnce` is not general enough") the moment this call chain was
+/// wrapped by `tauri::generate_handler!`'s command dispatch macro.
+#[allow(clippy::too_many_arguments)]
+async fn download_job_and_report(
+    client: &reqwest::Client,
+    job: DownloadJob,
+    counter: &AtomicU32,
+    bytes_total: &AtomicU64,
+    total: u32,
+    step_name: String,
+    sink: ProgressSink,
+) -> Result<u64, MojangError> {
+    let r = download_sha1_verified(client, &job.url, &job.dest, &job.sha1).await;
+    let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
+    sink(Progress::Step {
+        name: step_name,
+        current: done,
+        total,
+    });
+    if let Ok(size) = r {
+        bytes_total.fetch_add(size, Ordering::Relaxed);
+    }
+    r
+}
+
 /// Runs `jobs` at most `concurrency` at a time, reporting a `Step` per
 /// completion and aborting on the first error — mirrors `manifest.rs`'s
 /// `sync()` shape (pin the batch, fail whole on the first bad hash).
@@ -410,29 +439,14 @@ async fn run_download_batch(
     jobs: Vec<DownloadJob>,
     concurrency: usize,
     step_name: &str,
-    sink: ProgressSink<'_>,
+    sink: ProgressSink,
 ) -> Result<u64, MojangError> {
     let total = jobs.len() as u32;
     let counter = AtomicU32::new(0);
     let bytes_total = AtomicU64::new(0);
 
     let results: Vec<Result<u64, MojangError>> = futures_util::stream::iter(jobs.into_iter().map(|job| {
-        let client = client;
-        let counter = &counter;
-        let bytes_total = &bytes_total;
-        async move {
-            let r = download_sha1_verified(client, &job.url, &job.dest, &job.sha1).await;
-            let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
-            sink(Progress::Step {
-                name: step_name.to_string(),
-                current: done,
-                total,
-            });
-            if let Ok(size) = r {
-                bytes_total.fetch_add(size, Ordering::Relaxed);
-            }
-            r
-        }
+        download_job_and_report(client, job, &counter, &bytes_total, total, step_name.to_string(), sink.clone())
     }))
     .buffer_unordered(concurrency)
     .collect()
@@ -457,7 +471,7 @@ async fn run_download_batch(
 /// verified against Mojang's own published hash, through `public_client()`
 /// only. This function, and this whole file, has no way to reach our own
 /// distribution host at all.
-pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, MojangError> {
+pub async fn ensure_vanilla(sink: ProgressSink) -> Result<VanillaReport, MojangError> {
     let client = public_client();
 
     sink(Progress::Step {
@@ -519,7 +533,7 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
         }
     }
 
-    bytes_downloaded += run_download_batch(&client, lib_jobs, LIBRARY_CONCURRENCY, "Libraries", sink).await?;
+    bytes_downloaded += run_download_batch(&client, lib_jobs, LIBRARY_CONCURRENCY, "Libraries", sink.clone()).await?;
 
     // --- Assets: index + every object ---
     sink(Progress::Step {
@@ -557,7 +571,7 @@ pub async fn ensure_vanilla(sink: ProgressSink<'_>) -> Result<VanillaReport, Moj
         });
     }
     let asset_object_count = asset_jobs.len() as u32;
-    bytes_downloaded += run_download_batch(&client, asset_jobs, ASSET_CONCURRENCY, "Assets", sink).await?;
+    bytes_downloaded += run_download_batch(&client, asset_jobs, ASSET_CONCURRENCY, "Assets", sink.clone()).await?;
 
     sink(Progress::Done);
     log::info(&format!(

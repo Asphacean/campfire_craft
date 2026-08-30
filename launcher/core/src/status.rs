@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::http::{campfire_client, CAMPFIRE_BASE_URL};
+use crate::http::{campfire_base_url, campfire_client};
 use crate::log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ impl ServerStatus {
 /// bare `online: false` in the UI cannot distinguish.
 pub async fn fetch_status() -> ServerStatus {
     let resp = campfire_client()
-        .get(format!("{CAMPFIRE_BASE_URL}/status"))
+        .get(format!("{}/status", campfire_base_url()))
         .send()
         .await;
 

@@ -67,7 +67,10 @@
       </div>
 
       <div id="ram-block" class="ram-block" hidden>
-        <label class="field-label" for="ram-slider">Memory</label>
+        <div class="ram-label-row">
+          <label class="field-label" for="ram-slider">Memory</label>
+          <span id="ram-value" class="ram-value"></span>
+        </div>
         <input id="ram-slider" type="range" min="3" max="10" step="0.5" />
         <div id="ram-warning" class="ram-warning" hidden></div>
       </div>
@@ -77,9 +80,11 @@
         <progress id="progress-bar" value="0" max="100"></progress>
       </div>
 
-      <button id="play-btn" class="btn btn-accent" hidden disabled>Play</button>
+      <div id="info-banner" class="info-banner" hidden></div>
 
-      <div class="secondary-buttons">
+      <button id="play-btn" type="button" class="btn btn-accent" hidden>Play</button>
+
+      <div class="secondary-buttons" hidden id="secondary-buttons">
         <button id="game-folder-btn" type="button" class="btn btn-text">Game folder</button>
         <button id="verify-files-btn" type="button" class="btn btn-text">Verify files</button>
       </div>

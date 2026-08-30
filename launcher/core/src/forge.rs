@@ -274,7 +274,7 @@ fn merge(child: &VersionJson, parent: &VersionJson) -> Result<MergedVersion, For
 /// installer, write the profile stub, run it with the launcher's own
 /// provisioned Java, and merge the result with the cached vanilla parent
 /// from `mojang::load_version_json`.
-pub async fn ensure_forge(sink: ProgressSink<'_>) -> Result<(ForgeReport, MergedVersion), ForgeError> {
+pub async fn ensure_forge(sink: ProgressSink) -> Result<(ForgeReport, MergedVersion), ForgeError> {
     if let Some(child) = try_load_forge_json() {
         let parent = mojang::load_version_json().map_err(|e| ForgeError::VanillaMissing(format!("{e:?}")))?;
         let merged = merge(&child, &parent)?;

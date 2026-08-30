@@ -29,7 +29,29 @@ pub const ERROR_SERVER_UNREACHABLE: &str = "Can't reach campfire.pub. Check your
 pub const ERROR_JAVA_DOWNLOAD_FAILED: &str = "Couldn't set up Java.";
 pub const ERROR_DISK_FULL: &str = "Not enough disk space to continue.";
 pub const ERROR_SESSION_EXPIRED: &str = "Your session expired — log in again.";
+/// The fallback for every error the play sequence can produce that has no
+/// sentence of its own (D-08: "everything else falls back to a generic
+/// sentence that still names the log").
+pub const ERROR_GENERIC: &str = "Something went wrong.";
 pub const ERROR_OPEN_LOG: &str = "Open log";
+
+/// Maps a [`crate::play::PlayError::code`] to its actual sentence — the
+/// same small vocabulary `main.js`'s `mapPlayErrorCode` mirrors in JS
+/// (the two languages of code necessarily each hold one copy of the
+/// lookup, but both read from the identical five sentences plus the one
+/// generic fallback declared above). Used by `campfire-cli play`'s own
+/// failure output, which must show a sentence, never a Rust type name, a
+/// `reqwest` string or an HTTP status number.
+pub fn play_error_sentence(code: &str) -> &'static str {
+    match code {
+        "wrong_password" => ERROR_WRONG_PASSWORD,
+        "server_unreachable" => ERROR_SERVER_UNREACHABLE,
+        "java_error" => ERROR_JAVA_DOWNLOAD_FAILED,
+        "disk_full" => ERROR_DISK_FULL,
+        "session_expired" => ERROR_SESSION_EXPIRED,
+        _ => ERROR_GENERIC,
+    }
+}
 
 pub const INFO_FILES_REPAIRED: &str = "Some files didn't match and were repaired.";
 
@@ -65,6 +87,7 @@ pub fn as_json() -> serde_json::Value {
         "errorJavaDownloadFailed": ERROR_JAVA_DOWNLOAD_FAILED,
         "errorDiskFull": ERROR_DISK_FULL,
         "errorSessionExpired": ERROR_SESSION_EXPIRED,
+        "errorGeneric": ERROR_GENERIC,
         "errorOpenLog": ERROR_OPEN_LOG,
         "infoFilesRepaired": INFO_FILES_REPAIRED,
         "updateDialogTitle": UPDATE_DIALOG_TITLE,

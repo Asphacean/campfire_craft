@@ -17,8 +17,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
-use crate::http::{campfire_client, CAMPFIRE_BASE_URL};
+use crate::http::{campfire_base_url, campfire_client};
 use crate::log;
+use crate::progress::Progress;
 
 /// D-19: four downloads at a time, over the one shared client. A Pi
 /// serving one friend group doesn't want more, and a constant needs no
@@ -208,7 +209,7 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, SyncError> {
 
 pub async fn fetch_manifest() -> Result<Manifest, SyncError> {
     let resp = campfire_client()
-        .get(format!("{CAMPFIRE_BASE_URL}/manifest.json"))
+        .get(format!("{}/manifest.json", campfire_base_url()))
         .send()
         .await
         .map_err(|e| SyncError::Network(e.to_string()))?;
@@ -296,7 +297,8 @@ async fn download_one(
     std::fs::create_dir_all(parent).map_err(SyncError::from_io)?;
 
     let url = format!(
-        "{CAMPFIRE_BASE_URL}/pack/{}",
+        "{}/pack/{}",
+        campfire_base_url(),
         percent_encode_path(&entry.url)
     );
     let mut resp = client
@@ -420,12 +422,80 @@ fn seed_options(game_dir: &Path) -> std::io::Result<u32> {
     Ok(seeded)
 }
 
+fn pack_version_cache_path() -> PathBuf {
+    crate::paths::install_root().join("pack_version.txt")
+}
+
+/// Caches the manifest's own `pack_version` after a successful sync, so
+/// the version footer can show it on a cold start without waiting for the
+/// next sync to complete.
+fn cache_pack_version(version: &str) {
+    let _ = std::fs::write(pack_version_cache_path(), version);
+}
+
+/// What the version footer reads: the `pack_version` the last *successful*
+/// sync actually saw, or `None` before the first sync ever completes.
+pub fn cached_pack_version() -> Option<String> {
+    std::fs::read_to_string(pack_version_cache_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// One concurrent download slot's whole unit of work: download, report a
+/// `Step` and (on success) a `Bytes` tick. A **named** `async fn`, not a
+/// closure returning an inline `async move` block — the closure form,
+/// passed straight to `Iterator::map`/`buffer_unordered`, tripped a known
+/// rustc HRTB false-positive ("implementation of `FnOnce` is not general
+/// enough") the moment this whole call chain was wrapped by
+/// `tauri::generate_handler!`'s command dispatch macro; a plain named
+/// `async fn` produces a concrete, unambiguous opaque `Future` type that
+/// doesn't hit it.
+#[allow(clippy::too_many_arguments)]
+async fn download_one_and_report(
+    client: &reqwest::Client,
+    game_dir: &Path,
+    entry: ManifestFile,
+    downloaded_bytes: &AtomicU64,
+    file_counter: &AtomicU32,
+    start: std::time::Instant,
+    download_total: u32,
+    bytes_total: u64,
+    sink: crate::progress::ProgressSink,
+) -> Result<u64, SyncError> {
+    let result = download_one(client, game_dir, &entry).await;
+    let done = file_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    match &result {
+        Ok(size) => {
+            let so_far = downloaded_bytes.fetch_add(*size, Ordering::Relaxed) + size;
+            let elapsed = start.elapsed().as_secs_f64().max(0.001);
+            sink(Progress::Step {
+                name: "Downloading".to_string(),
+                current: done,
+                total: download_total,
+            });
+            sink(Progress::Bytes {
+                downloaded: so_far,
+                total: bytes_total,
+                per_sec: (so_far as f64 / elapsed) as u64,
+            });
+        }
+        Err(_) => {
+            sink(Progress::Step {
+                name: "Downloading".to_string(),
+                current: done,
+                total: download_total,
+            });
+        }
+    }
+    result
+}
+
 /// The full sync: fetch and pin the manifest for the whole run, validate
 /// it whole (reject, don't skip), diff by size+sha256, download only what
 /// changed (at most [`DOWNLOAD_CONCURRENCY`] at a time), apply `delete[]`,
 /// and seed the pack's own client options once.
-pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport, SyncError> {
-    use crate::progress::Progress;
+pub async fn sync(sink: crate::progress::ProgressSink) -> Result<SyncReport, SyncError> {
     use futures_util::StreamExt;
 
     let game_dir = crate::paths::game_dir();
@@ -439,7 +509,18 @@ pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport,
     ));
 
     let total_files = manifest.files.len() as u32;
-    let mut to_download: Vec<&ManifestFile> = Vec::new();
+    // Owned clones, not `&ManifestFile` borrowed from `manifest.files` —
+    // a `Vec<&T>` fed through `Stream::map(closure).buffer_unordered()`
+    // where the closure also captures other references (`client`,
+    // `game_dir`) tripped a genuine, documented rustc/futures HRTB
+    // limitation ("implementation of `FnOnce`/`Send` is not general
+    // enough") the moment the result needed a `Send` bound proven for it
+    // — both `tokio::spawn` and `tauri::generate_handler!`'s command
+    // dispatch require exactly that proof. Owned items have no borrowed
+    // lifetime tied to this Vec for the HRTB check to trip on; a
+    // `ManifestFile` clone (a few small `String`s) is a trivial cost next
+    // to the download itself.
+    let mut to_download: Vec<ManifestFile> = Vec::new();
     for (i, entry) in manifest.files.iter().enumerate() {
         sink(Progress::Step {
             name: "Checking files".to_string(),
@@ -447,7 +528,7 @@ pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport,
             total: total_files,
         });
         if !is_up_to_date(&game_dir, entry) {
-            to_download.push(entry);
+            to_download.push(entry.clone());
         }
     }
 
@@ -458,42 +539,19 @@ pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport,
     let file_counter = AtomicU32::new(0);
     let start = std::time::Instant::now();
 
-    let results: Vec<Result<u64, SyncError>> = futures_util::stream::iter(to_download.into_iter().map(
-        |entry| {
-            let client = &client;
-            let game_dir = &game_dir;
-            let downloaded_bytes = &downloaded_bytes;
-            let file_counter = &file_counter;
-            async move {
-                let result = download_one(client, game_dir, entry).await;
-                let done = file_counter.fetch_add(1, Ordering::Relaxed) + 1;
-                match &result {
-                    Ok(size) => {
-                        let so_far = downloaded_bytes.fetch_add(*size, Ordering::Relaxed) + size;
-                        let elapsed = start.elapsed().as_secs_f64().max(0.001);
-                        sink(Progress::Step {
-                            name: "Downloading".to_string(),
-                            current: done,
-                            total: download_total,
-                        });
-                        sink(Progress::Bytes {
-                            downloaded: so_far,
-                            total: bytes_total,
-                            per_sec: (so_far as f64 / elapsed) as u64,
-                        });
-                    }
-                    Err(_) => {
-                        sink(Progress::Step {
-                            name: "Downloading".to_string(),
-                            current: done,
-                            total: download_total,
-                        });
-                    }
-                }
-                result
-            }
-        },
-    ))
+    let results: Vec<Result<u64, SyncError>> = futures_util::stream::iter(to_download.into_iter().map(|entry| {
+        download_one_and_report(
+            &client,
+            &game_dir,
+            entry,
+            &downloaded_bytes,
+            &file_counter,
+            start,
+            download_total,
+            bytes_total,
+            sink.clone(),
+        )
+    }))
     .buffer_unordered(DOWNLOAD_CONCURRENCY)
     .collect()
     .await;
@@ -523,6 +581,7 @@ pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport,
 
     let deleted = apply_deletes(&manifest, &game_dir)?;
     let seeded = seed_options(&game_dir).map_err(SyncError::from_io)?;
+    cache_pack_version(&manifest.pack_version);
 
     sink(Progress::Done);
     log::info(&format!(
@@ -542,8 +601,7 @@ pub async fn sync(sink: crate::progress::ProgressSink<'_>) -> Result<SyncReport,
 /// download path `sync` uses — not a parallel implementation. Sequential:
 /// this is the "Verify files" button, not the hot Play-press path, and
 /// simplicity wins over four-at-a-time speed here.
-pub async fn verify(sink: crate::progress::ProgressSink<'_>) -> Result<VerifyReport, SyncError> {
-    use crate::progress::Progress;
+pub async fn verify(sink: crate::progress::ProgressSink) -> Result<VerifyReport, SyncError> {
 
     let game_dir = crate::paths::game_dir();
     let manifest = fetch_manifest().await?;
@@ -568,6 +626,7 @@ pub async fn verify(sink: crate::progress::ProgressSink<'_>) -> Result<VerifyRep
         }
     }
     let _ = seed_options(&game_dir);
+    cache_pack_version(&manifest.pack_version);
     sink(Progress::Done);
     Ok(VerifyReport { checked, repaired })
 }
