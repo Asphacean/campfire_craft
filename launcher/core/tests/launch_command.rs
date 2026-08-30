@@ -164,6 +164,28 @@ fn xmx_reflects_a_half_gigabyte_step_in_megabytes() {
 }
 
 #[test]
+fn a_non_finite_ram_value_is_clamped_to_the_default_instead_of_producing_zero_heap() {
+    // f32::clamp does not sanitize NaN (`f32::NAN.clamp(3.0, 10.0)` returns
+    // NaN unchanged), and `NaN as u64` silently saturates to 0, which would
+    // otherwise produce `-Xms0M -Xmx0M`. `f32::INFINITY` isn't NaN but
+    // isn't finite either, so it must go through the same guard rather than
+    // `.clamp()` alone (which does correctly clamp +inf to 10.0, but the
+    // guard is one `is_finite()` check covering both cases).
+    let _home = ScratchHome::new("ram-nan");
+    let merged = fake_merged("1.12.2-forge-test-ram-nan");
+    let session = fake_session("TestNick", "tok");
+    let java = fake_java_path();
+
+    let argv = build_launch_command(&session, f32::NAN, &merged, &java, true).unwrap();
+    assert!(argv.contains(&"-Xmx3072M".to_string()));
+    assert!(argv.contains(&"-Xms3072M".to_string()));
+
+    let argv = build_launch_command(&session, f32::INFINITY, &merged, &java, true).unwrap();
+    assert!(argv.contains(&"-Xmx3072M".to_string()));
+    assert!(argv.contains(&"-Xms3072M".to_string()));
+}
+
+#[test]
 fn main_class_and_tweak_class_are_both_present() {
     let _home = ScratchHome::new("mainclass");
     let merged = fake_merged("1.12.2-forge-test-mc");

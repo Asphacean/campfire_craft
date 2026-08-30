@@ -280,6 +280,15 @@ pub fn build_launch_command(
         .to_string_lossy()
         .to_string();
 
+    // WR-05: `f32::clamp` panics on a NaN bound but does not sanitize a NaN
+    // `self` — `f32::NAN.clamp(3.0, 10.0)` returns `NaN` unchanged, and
+    // `NaN as u64` silently saturates to 0, producing `-Xms0M -Xmx0M`. The
+    // Tauri `play` command clamps to [3.0, 10.0] but not against NaN;
+    // `campfire-cli`'s `--ram` parses "nan" successfully and applies no
+    // clamp at all. Guarded once here — the boundary every caller funnels
+    // through — rather than in each caller.
+    let ram_gb = if ram_gb.is_finite() { ram_gb.clamp(3.0, 10.0) } else { 3.0 };
+
     // The RAM slider moves in half-gigabyte steps (D-06), and the JVM's
     // own `-Xmx`/`-Xms` flags reject a fractional `G` suffix outright
     // (confirmed live on this Pi: `-Xmx7.5G` is "Invalid maximum heap
