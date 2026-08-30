@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "campfire-launcher",
+  "productName": "Campfire-Launcher",
   "version": "0.1.0",
   "identifier": "pub.campfire.launcher",
   "build": {
@@ -31,7 +31,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "signingIdentity": "-"
+    }
   },
   "plugins": {
     "updater": {

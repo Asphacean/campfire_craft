@@ -1,0 +1,7 @@
+self-hosted-runner:
+  # release.yml's publish job runs on the operator's own self-hosted Pi
+  # runner (registered in 05-02), labeled "campfire-publish" alongside the
+  # built-in "self-hosted" label — actionlint has no way to know a custom
+  # label is valid without this allowlist.
+  labels:
+    - campfire-publish
