@@ -137,7 +137,17 @@ jobs:
           WORKDIR="$(mktemp -d)"
           trap 'rm -rf "$WORKDIR"' EXIT
 
-          ASSET_URLS="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+          # --retry-all-errors: this self-hosted runner shares its public IP
+          # with an unauthenticated GitHub API caller (this Pi's own
+          # operator tooling) — a transient 403 (rate limit) or a brief
+          # asset-CDN propagation 404 right after upload is a real,
+          # observed failure mode here (v0.1.2's first attempt: curl exit
+          # 22), not a hypothetical one. 5 retries over ~30s absorbs both
+          # without masking a genuinely missing/wrong tag (which still
+          # fails after retries exhaust).
+          CURL_RETRY=(--retry 5 --retry-delay 5 --retry-all-errors)
+
+          ASSET_URLS="$(curl -fsSL "${CURL_RETRY[@]}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
             | jq -r '.assets[] | select(.name | test("_x64-setup\\.exe$|_aarch64\\.app\\.tar\\.gz$|_x64\\.app\\.tar\\.gz$")) | .browser_download_url')"
 
           if [ -z "$ASSET_URLS" ]; then
@@ -147,7 +157,7 @@ jobs:
 
           cd "$WORKDIR"
           while IFS= read -r url; do
-            curl -fsSL -O "$url"
+            curl -fsSL "${CURL_RETRY[@]}" -O "$url"
           done <<< "$ASSET_URLS"
 
           # CR-01: refuse to sign anything until every downloaded asset's
