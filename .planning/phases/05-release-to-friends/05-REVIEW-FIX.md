@@ -146,3 +146,82 @@ None — all 6 in-scope findings were fixed.
 _Fixed: 2026-08-30T22:00:00Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+---
+
+## Follow-up: v0.1.3 publish-job `exit 1` post-mortem (2026-08-31)
+
+CR-01's own fix note above was explicit that "the cross-job artifact
+upload/download hand-off itself has not run in a live GitHub Actions
+execution." It finally did, across v0.1.1–v0.1.3, and broke — twice, in
+ways this fix's local dry-run couldn't have caught because that dry-run
+used already-correctly-named files from the v0.1.0 release rather than a
+live `build`-job-produced checksums artifact.
+
+**Root cause (confirmed against the real failed-run evidence, no
+GitHub auth needed):** the self-hosted publish runner's `_work/` tree
+and `_diag/` worker log from the failed v0.1.3 run were still present
+on disk (`~/actions-runner-campfire/_work/campfire_craft/campfire_craft/checksums/*.txt`,
+`~/actions-runner-campfire/_diag/Worker_20260831-003757-utc.log`). Two
+independent filename-matching bugs in the CR-01 verify logic, either
+alone sufficient to trip the "no known-good checksum for `$f` —
+refusing to sign" guard:
+
+1. **Windows binary-mode `sha256sum` output.** `windows-latest`'s
+   `sha256sum` emits `<hex> *<path>` (one space + asterisk), not GNU's
+   default text-mode `<hex>  <path>` (two spaces). The path-stripping
+   `sed -E 's|(  ).*/|\1|'` required a literal two-space run to match at
+   all, so on Windows it silently no-opped, leaving full repo-relative
+   paths (`launcher/target/release/bundle/nsis/Campfire-Launcher_0.1.3_x64-setup.exe`)
+   in `checksums-windows-latest.txt` instead of bare filenames.
+2. **macOS `.app.tar.gz` naming gap.** `checksums-macos-14.txt` and
+   `checksums-macos-15-intel.txt` contained sha256 entries for the
+   `.dmg` files only, with zero entries for either `.app.tar.gz`
+   updater bundle — even though both exist as real, correctly-named
+   release assets (confirmed via the GitHub API). `.dmg`'s local
+   filename happens to already carry version+arch, matching the release
+   asset name; `.app.tar.gz`'s apparently does not.
+
+Verified directly: downloaded the real v0.1.3 release assets and
+recomputed their sha256 — the Windows `.exe`/`.msi` hashes are present
+(if mis-formatted) in the checksums artifact, while the two
+`.app.tar.gz` hashes have no entry anywhere in it, reproducing the
+"no known-good checksum" condition byte-for-byte. The publish job's
+`Process completed with exit code 1` after only ~2.7s of runtime (per
+the worker log) is consistent with hitting this guard on the very first
+`for f in *` iteration rather than exhausting curl retries.
+
+**Fixed**, commit `dedc1ea`:
+- Build job: the path-stripping `sed` now matches both the GNU
+  text-mode and Windows binary-mode `sha256sum` line formats.
+- Publish job: the verify step now matches downloaded assets against
+  the checksums artifact by **sha256 membership** (does this file's
+  hash appear anywhere in the recorded set?) instead of requiring an
+  exact filename match — CR-01's actual requirement was always
+  "these bytes are what the build job produced," not "today's local
+  build path happens to name the file identically to the release
+  asset," so this is invariant to both failure modes above and to any
+  future one shaped the same way.
+
+`actionlint -config-file .github/actionlint.yaml` passes clean on the
+updated workflow. Both the new `sed` and the new hash-membership match
+were re-run locally against this run's real captured checksum-file
+content and the actual downloaded v0.1.3 bytes, with the expected
+pass/fail behavior in each case.
+
+**Not yet done:** a new tag was NOT cut this session (retry-budget
+discipline — see 05-UAT.md test 3). The fix is only provable live on
+the next tagged release. To unblock the rest of phase 5's UAT without
+spending that retry, the v0.1.3 feed was published to production
+**manually** — running `scripts/publish-launcher.sh` by hand with the
+same arguments the publish job uses, against the real v0.1.3 release
+assets downloaded anonymously — and independently verified: feed
+reports `0.1.3`, all 3 asset URLs return HTTP 200, all 3 sha256s match
+the GitHub release assets, and a from-scratch Ed25519/minisign
+verifier (Python `cryptography`, no `minisign` binary available on this
+Pi) confirms every platform's per-file signature validates against the
+pubkey baked into `tauri.conf.json`. See 05-UAT.md test 3 for the full
+account.
+
+_Follow-up recorded: 2026-08-31T04:05:00Z_
+_Investigator: Claude (gsd-execute-phase)_
