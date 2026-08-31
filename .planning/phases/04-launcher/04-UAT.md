@@ -18,15 +18,15 @@ awaiting: user response
 
 ### 1. Windows x64 — clean machine, register, RAM, Play → in world
 expected: Per docs/LAUNCHER-BUILD.md QA matrix "On Windows x64 — the main path" items.
-result: [pending]
+result: [passed] via 2026-08-31 Windows x64 operator QA (see 05-UAT.md test 1)
 
 ### 2. Windows x64 — second launch: no password, 0 bytes re-downloaded, saves/options untouched
 expected: Form collapsed to "Playing as Nick · Log out"; sync reports nothing changed.
-result: [pending]
+result: [passed] via 2026-08-31 Windows x64 operator QA (see 05-UAT.md test 1)
 
 ### 3. Windows x64 — error banners: wrong password, server unreachable, "Open log" opens the log
 expected: Plain-English messages per UI-SPEC; log path opens.
-result: [pending]
+result: [passed] via 2026-08-31 Windows x64 operator QA (see 05-UAT.md test 1)
 
 ### 4. macOS Apple Silicon — Rosetta prompt (if needed), x86_64 Java 8 downloaded, game renders and plays
 expected: Per QA matrix "On macOS Apple Silicon"; playable framerate noted.

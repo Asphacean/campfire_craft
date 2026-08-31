@@ -18,7 +18,7 @@ awaiting: user response
 
 ### 1. Windows clean install + play (REL-01, REL-02; closes 04-UAT 1–3, 02-UAT 1–2, 01-UAT 1)
 expected: Per docs/LAUNCHER-BUILD.md Phase 5 QA matrix, Windows section.
-result: [pending]
+result: [passed] 2026-08-31 operator QA on Windows x64: install via SmartScreen bypass, Create account, Play → in world on mc.campfire.pub; relaunch without password. Reported: "На виндовсе все работает корректно".
 
 ### 2. Apple Silicon: Gatekeeper bypass + play + rendering (REL-02, REL-03; closes 04-UAT 4)
 expected: Download aarch64 .dmg; right-click Open / xattr -cr "/Applications/Campfire-Launcher.app"; Rosetta prompt OK; game renders and plays; note framerate.

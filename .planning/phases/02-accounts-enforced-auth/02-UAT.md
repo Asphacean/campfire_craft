@@ -18,7 +18,7 @@ awaiting: user response
 
 ### 1. Modded client with valid token joins and plays
 expected: Player with valid token spawns normally and can move/break/chat (see docs/AUTH-OPS.md "Client verification").
-result: [pending]
+result: [passed] via 2026-08-31 Windows x64 operator QA (see 05-UAT.md test 1)
 
 ### 2. Modded client without token is kicked
 expected: Same client, registered nick, no -D flags: kicked with bilingual "Зайди через лаунчер campfire.pub / Join via the campfire.pub launcher" before acting; server/logs/latest.log shows result=kick reason=no_packet.

@@ -18,7 +18,7 @@ awaiting: user response
 
 ### 1. Friend outside the home network joins by domain
 expected: Friend (mobile hotspot or other home) joins mc.campfire.pub with RLCraft 2.9.3 client and plays.
-result: [pending]
+result: [passed] via 2026-08-31 Windows x64 operator QA (see 05-UAT.md test 1)
 
 ### 2. Pi reboot survival
 expected: Run `sudo reboot` on the Pi; within ~5 min `systemctl is-active rlcraft` prints active and a client can join again, with no operator action.
