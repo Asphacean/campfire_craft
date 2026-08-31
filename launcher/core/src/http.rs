@@ -31,7 +31,12 @@ pub fn campfire_client() -> reqwest::Client {
         // built-in root — a single call is what makes "pinned" mean
         // pinned rather than "our CA plus the usual trust store".
         .tls_certs_only([ca])
-        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        // No total-request timeout: a 30s cap counted the whole body, so a
+        // large mod jar over a slow link aborted mid-stream (v0.1.5 Mac UAT:
+        // lycanitesmobs jar, "operation timed out"). A stalled connection is
+        // still cut by the read timeout below.
+        .read_timeout(Duration::from_secs(60))
         .user_agent(USER_AGENT)
         .build()
         .expect("failed to build the pinned HTTPS client")
@@ -42,7 +47,10 @@ pub fn campfire_client() -> reqwest::Client {
 /// `campfire.pub`; it has no knowledge of our own CA at all.
 pub fn public_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        // Same rationale as campfire_client: downloads (client.jar, Java
+        // runtimes) must not race a total-request timeout on slow links.
+        .read_timeout(Duration::from_secs(60))
         .user_agent(USER_AGENT)
         .build()
         .expect("failed to build the public HTTPS client")
