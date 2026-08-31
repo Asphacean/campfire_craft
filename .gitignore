@@ -101,3 +101,5 @@ launcher/src-tauri/gen/schemas/
 # release process — never tracked, kept out of the pack tree deliberately.
 launcher-dist/*
 !launcher-dist/.gitkeep
+.planning/milestone.lock
+server/usernamecache.json
