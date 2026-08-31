@@ -159,6 +159,21 @@ pub fn extract_natives(merged: &MergedVersion) -> Result<PathBuf, LaunchError> {
     Ok(dest)
 }
 
+/// UAT gap-closure #5 (round 2): overwrites the natives dir's own
+/// `openal.dylib` (whatever Mojang's LWJGL2 natives jar shipped — Apple's
+/// system `OpenAL.framework` on macOS, which never implemented EFX) with
+/// the verified EFX-capable openal-soft build `openal.rs` provisioned.
+/// `src` is a plain file copy, never a network call — the async fetch
+/// already happened in `play.rs` before this sync function runs. A no-op
+/// call site (`openal_override: None`) is exactly what every non-macOS
+/// caller passes, so this never touches Windows/Linux natives dirs.
+fn apply_openal_override(natives_dir: &Path, src: &Path) -> Result<(), LaunchError> {
+    let dest = natives_dir.join("openal.dylib");
+    std::fs::copy(src, &dest).map_err(|e| LaunchError::Io(io_ctx("copy", &dest, e)))?;
+    log::info(&format!("launch: overwrote {} with EFX-capable openal-soft", dest.display()));
+    Ok(())
+}
+
 fn extract_native_archive(archive: &Path, dest: &Path, exclude: &[String]) -> Result<(), LaunchError> {
     let file = std::fs::File::open(archive).map_err(|e| LaunchError::Io(io_ctx("open", archive, e)))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| LaunchError::Extract(e.to_string()))?;
@@ -258,18 +273,26 @@ fn log_launch_command(argv: &[String], token: &str) {
 /// classpath, the main class, then the substituted game arguments, and
 /// finally the two optional autoconnect arguments if `autoconnect` is true
 /// — the only removable part of this whole command line.
+/// `openal_override`: the cached, verified EFX-capable openal-soft dylib
+/// `openal::ensure_openal_soft()` provisioned, or `None` on every platform
+/// (and every failure path) that fix doesn't apply to — see
+/// `apply_openal_override`'s doc comment.
 pub fn build_launch_command(
     session: &Session,
     ram_gb: f32,
     merged: &MergedVersion,
     java_path: &Path,
     autoconnect: bool,
+    openal_override: Option<&Path>,
 ) -> Result<Vec<String>, LaunchError> {
     if !java_path.starts_with(runtime_dir()) {
         return Err(LaunchError::JavaOutsideRuntime);
     }
 
     let natives_path = extract_natives(merged)?;
+    if let Some(src) = openal_override {
+        apply_openal_override(&natives_path, src)?;
+    }
     let classpath = build_classpath(merged)?;
     let cp_string = std::env::join_paths(&classpath)
         .map_err(|e| LaunchError::Io(e.to_string()))?
@@ -361,5 +384,27 @@ mod tests {
     fn two_casings_of_the_same_nick_produce_different_uuids() {
         assert_ne!(offline_uuid("TestNick"), offline_uuid("testnick"));
         assert_ne!(offline_uuid("TestNick"), offline_uuid("TESTNICK"));
+    }
+
+    /// T-04-03-04-style natives-dir safety exercise, scaled to this
+    /// override: a fake `natives_dir` (never a real Mojang archive) proves
+    /// the copy lands at the exact `openal.dylib` name LWJGL2 `dlopen()`s,
+    /// with the override's own bytes, not merely "some file exists".
+    #[test]
+    fn openal_override_writes_the_source_bytes_to_openal_dylib() {
+        let tmp = std::env::temp_dir().join(format!("campfire-openal-override-test-{}", std::process::id()));
+        let natives = tmp.join("natives");
+        std::fs::create_dir_all(&natives).unwrap();
+        // A pre-existing "Mojang" openal.dylib the override must overwrite,
+        // not merge with or leave alongside.
+        std::fs::write(natives.join("openal.dylib"), b"apple-system-openal-no-efx").unwrap();
+        let src = tmp.join("libopenal-soft.dylib");
+        std::fs::write(&src, b"efx-capable-openal-soft-bytes").unwrap();
+
+        apply_openal_override(&natives, &src).unwrap();
+
+        let written = std::fs::read(natives.join("openal.dylib")).unwrap();
+        assert_eq!(written, b"efx-capable-openal-soft-bytes");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

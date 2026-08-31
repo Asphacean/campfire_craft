@@ -443,7 +443,7 @@ async fn cmd_launch_cmd(args: &mut Vec<String>, spawn_it: bool) {
         token,
         expires: 0,
     };
-    let argv = match launch::build_launch_command(&session, ram, &merged, &java_path, true) {
+    let argv = match launch::build_launch_command(&session, ram, &merged, &java_path, true, None) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("FATAL: build_launch_command failed: {e:?}");

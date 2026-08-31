@@ -18,6 +18,7 @@ pub mod launch;
 pub mod log;
 pub mod manifest;
 pub mod mojang;
+pub mod openal;
 pub mod paths;
 pub mod play;
 pub mod progress;

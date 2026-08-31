@@ -108,6 +108,24 @@ silently, and this document does not attempt to.) Without this step,
 Play will fail with "Couldn't set up Java." — see "What the log does and
 doesn't contain" below for how to confirm that's really what happened.
 
+**OpenAL EFX fix (UAT gap-closure #5, v0.1.10+).** A confirmed Mac crash
+(`SIGSEGV` at `Java_org_lwjgl_openal_EFX10_nalGenFilters2`, deep in mods)
+turned out to be an OpenAL problem, not a Rosetta/architecture one: macOS
+LWJGL2 resolves against Apple's own `OpenAL.framework`, which has never
+implemented the EFX extension RLCraft's sound mods call. `launch.rs` now
+overwrites the extracted natives' `openal.dylib` with a pinned,
+sha256-verified `openal-soft` build (`launcher/core/src/openal.rs`;
+source: Homebrew core's own bottle, hosted as a content-addressed OCI
+artifact on `ghcr.io`) on every Play, for both Mac targets — this applies
+under Rosetta exactly as much as it would to a hypothetical arm64-native
+build, since the bug was never about which architecture ran the JVM.
+**Still deferred, unchanged**: the ARM64-native LWJGL2 + Zulu 8 arm64 JRE
+spike from `04-CONTEXT.md`. The only two source forks PITFALLS.md names
+(`shadowfacts/lwjgl2-arm64`/`jinput-arm64`) publish source only — no
+verifiable prebuilt binary exists to ship — so `java.rs`'s target matrix
+(D-10) is untouched: both Mac targets still provision x86_64 Temurin 8
+under Rosetta, same as before this fix.
+
 **Gatekeeper will refuse to open an unsigned, unnotarized `.app` at all**
 on a real macOS machine (not just warn, like Windows SmartScreen) — this
 is REL-02's job in `.planning/REQUIREMENTS.md`, covered by Phase 5's
@@ -289,6 +307,10 @@ report each line as pass, fail, or something-else-happened.
     game starts, whether it renders correctly, and roughly what framerate
     you get standing still in a forest — this is the one number that
     decides whether the deferred arm64 follow-up ever needs to happen.
+    Also report whether the game stays up under real mod load (sound-heavy
+    areas especially) — v0.1.9's SIGSEGV (OpenAL EFX, gap-closure #5) is
+    fixed in v0.1.10+ but unverifiable without this exact check on real
+    hardware.
 16. **Translation layer missing.** If the machine has never installed
     the translation layer, report what the launcher did: it should show
     "Couldn't set up Java." with the real cause named in the log, not a

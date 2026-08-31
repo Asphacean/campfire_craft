@@ -14,6 +14,7 @@ use crate::launch::{self, LaunchError};
 use crate::log;
 use crate::manifest::{self, SyncError};
 use crate::mojang::{self, MojangError};
+use crate::openal;
 use crate::progress::{Progress, ProgressSink};
 
 const TOTAL_STEPS: u32 = 6;
@@ -176,8 +177,33 @@ pub async fn play(
         total: TOTAL_STEPS,
     });
     launch::seed_server_list();
-    let argv = launch::build_launch_command(&session, ram_gb, &merged, &java_provision.java_path, true)
-        .map_err(|e| {
+    // UAT gap-closure #5 (round 2): the operator's hs_err named the real
+    // v0.1.9 crash (OpenAL EFX null pointer, Java_org_lwjgl_openal_EFX10_
+    // nalGenFilters2) — provision the verified EFX-capable openal-soft
+    // dylib and let `build_launch_command` overwrite Mojang's own
+    // `openal.dylib` with it. A non-macOS build's `ensure_openal_soft`
+    // returns immediately with no network call (see `openal.rs`), so this
+    // is a genuine no-op there. A macOS failure here (e.g. ghcr.io
+    // unreachable) is logged and treated as `None` rather than blocking
+    // Play outright — a network hiccup on a small, independent fix must
+    // not regress every other Play step, and the game still launches (as
+    // it did before this fix existed), just still exposed to the EFX bug.
+    let openal_override = match openal::ensure_openal_soft().await {
+        Ok(path) => Some(path),
+        Err(e) => {
+            log::info(&format!("play: openal-soft provisioning skipped: {e:?}"));
+            None
+        }
+    };
+    let argv = launch::build_launch_command(
+        &session,
+        ram_gb,
+        &merged,
+        &java_provision.java_path,
+        true,
+        openal_override.as_deref(),
+    )
+    .map_err(|e| {
             log::info(&format!("play: building the launch command failed: {e:?}"));
             PlayError::Launch(e)
         })?;
