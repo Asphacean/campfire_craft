@@ -83,6 +83,15 @@ jobs:
           # `xargs --no-run-if-empty`, a GNU-only long option BSD/macOS
           # xargs rejects outright) already never invokes the hash command
           # at all when nothing matches, on both BSD and GNU find.
+          #
+          # v0.1.3 post-mortem: windows-latest's `sha256sum` emits
+          # *binary-mode* output ("<hex> *<path>", one space + asterisk),
+          # not GNU's default text-mode ("<hex>  <path>", two spaces) --
+          # the old `sed -E 's|(  ).*/|\1|'` required a literal two-space
+          # run to fire at all, so on Windows it silently no-opped and
+          # left the full repo-relative path in checksums-windows-latest.txt
+          # instead of a bare filename. The replacement below matches hash
+          # + one-or-more-spaces + optional '*' + path, on any platform.
           if [ "$RUNNER_OS" = "macOS" ]; then
             HASH_CMD=(shasum -a 256)
           else
@@ -93,7 +102,7 @@ jobs:
                -o -name '*_aarch64.app.tar.gz' -o -name '*_x64.app.tar.gz' \
                -o -name '*.dmg' \) \
             -exec "${HASH_CMD[@]}" {} + \
-            | sed -E 's|(  ).*/|\1|' > "checksums-${{ matrix.platform }}.txt"
+            | sed -E 's/^([0-9a-fA-F]+) +\*?.*\//\1  /' > "checksums-${{ matrix.platform }}.txt"
           cat "checksums-${{ matrix.platform }}.txt"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -166,11 +175,28 @@ jobs:
           # anyone with release-edit rights; the checksums artifact
           # downloaded above cannot be, so it's the only thing this step
           # trusts as proof of provenance.
+          #
+          # v0.1.3 post-mortem: this used to be an exact-filename match
+          # (grep -qF "  $f" + `sha256sum -c`), which broke on the very
+          # first live run for two independent reasons, both confirmed
+          # against the real failed-run artifacts: (1) the Windows
+          # filename-stripping bug above meant checksums-windows-latest.txt
+          # held full paths, not bare filenames; (2) the macOS
+          # `.app.tar.gz` updater bundles' local on-disk name (as `find`
+          # sees it) differs from the name they end up with once uploaded
+          # as a release asset -- unlike `.dmg`, whose Tauri-generated
+          # local filename already carries version+arch, so it happened to
+          # match. CR-01's actual requirement is "these bytes are what the
+          # build job produced", not "today's local build path happens to
+          # name the file identically to the release asset" -- so this
+          # matches by sha256 membership instead, which is invariant to
+          # both failure modes.
           CHECKSUMS_DIR="$GITHUB_WORKSPACE/checksums"
+          KNOWN_HASHES="$(awk '{print $1}' "$CHECKSUMS_DIR"/*.txt | sort -u)"
           for f in *; do
-            grep -qF "  $f" "$CHECKSUMS_DIR"/*.txt || { echo "FATAL: no known-good checksum for $f -- refusing to sign" >&2; exit 1; }
+            actual="$(sha256sum "$f" | awk '{print $1}')"
+            grep -qxF "$actual" <<<"$KNOWN_HASHES" || { echo "FATAL: no known-good checksum matches $f (sha256 $actual) -- refusing to sign" >&2; exit 1; }
           done
-          sha256sum -c <(cat "$CHECKSUMS_DIR"/*.txt) --ignore-missing
           echo "Checksum verification passed for all downloaded assets."
 
           /home/asphacean/rlcraft/scripts/publish-launcher.sh \
