@@ -117,7 +117,9 @@ directly from the terminal sidesteps Gatekeeper's Finder-launch check
 entirely, which is exactly why every check in this document's QA matrix
 below is written to run the binary that way.
 
-## macOS Intel
+## macOS Intel (retired 2026-08-31)
+
+**The Intel build leg was removed from CI by operator decision — no Intel players.** The notes below are kept for history; re-add a `macos-15-intel` (or current label) matrix leg in `.github/workflows/release.yml` to revive it.
 
 **No Intel Mac exists to build or test on for this project.** The build
 path is identical to Apple Silicon above — same two commands, same
@@ -189,7 +191,7 @@ scripts/release.sh <version>
 This bumps the version everywhere it's written (`tauri.conf.json`,
 `Cargo.toml`, `Cargo.lock`), commits, tags `v<version>`, and pushes. That
 push triggers `.github/workflows/release.yml`: three GitHub-hosted runners
-(`windows-latest`, `macos-14`, `macos-15-intel`) build the Windows
+(`windows-latest`, `macos-14`) build the Windows
 installer and both macOS bundles, attach them to a new GitHub Release, and
 a job on this Pi's own self-hosted runner (`campfire-publish`) downloads
 those assets, signs them with the operator's pi-only minisign key, and

@@ -32,7 +32,7 @@
 
 - [ ] **LNCH-01**: Launcher has a single screen: nick, password, Register/Login, RAM slider (3–10 GB, sensible default), Play button
 - [ ] **LNCH-02**: On Play, launcher diffs local files against the manifest and downloads only changed/missing files; deletes stale managed files; never touches saves/options.txt/servers.dat
-- [ ] **LNCH-03**: Launcher downloads a Java 8 runtime automatically if absent: Adoptium for Windows x64 and macOS Intel, Azul Zulu for macOS Apple Silicon; never uses system Java
+- [ ] **LNCH-03**: Launcher downloads a Java 8 runtime automatically if absent: Adoptium for Windows x64 and macOS Intel, Azul Zulu for macOS Apple Silicon; never uses system Java (macOS Intel build retired 2026-08-31 by operator decision — no Intel players)
 - [ ] **LNCH-04**: Launcher installs/constructs the Forge 1.12.2 client (version json merge, libraries, natives, assets) and launches with the chosen RAM, injecting the auth token and auto-connecting to the server
 - [ ] **LNCH-05**: Launcher shows progress (step + file count/bytes) during download and launch
 - [ ] **LNCH-06**: Failures show a human-readable message (wrong password, server unreachable, disk full, Java download failed) and point to a local log file

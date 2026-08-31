@@ -26,13 +26,11 @@ one file for your machine:
 |---|---|
 | Windows | `Campfire-Launcher_0.1.0_x64-setup.exe` |
 | Mac — Apple Silicon (M1/M2/M3/M4) | `Campfire-Launcher_0.1.0_aarch64.dmg` |
-| Mac — Intel | `Campfire-Launcher_0.1.0_x64.dmg` |
 
 **Not sure which Mac you have?** Click the Apple menu (top-left corner) →
 **About This Mac**. If the line under the Mac's name says **Chip** (for
 example "Chip: Apple M2"), you have Apple Silicon — download the `aarch64`
-file. If it says **Processor** with an Intel model name instead, you have an
-Intel Mac — download the `x64` file.
+file. Intel Macs are not supported.
 
 ## Windows: installing and the one warning you'll see
 

@@ -60,7 +60,7 @@ each artifact's own filename (Tauri's own naming convention):
 
   <name>_<version>_x64-setup.exe        -> windows-x86_64
   <name>_<version>_x64_en-US.msi        -> windows-x86_64
-  <name>_<version>_x64.app.tar.gz       -> darwin-x86_64
+  <name>_<version>_x64.app.tar.gz       -> darwin-x86_64 (retired 2026-08-31 — Intel leg removed from CI; mapping kept for old feeds)
   <name>_<version>_aarch64.app.tar.gz   -> darwin-aarch64
 
   --version <X.Y.Z>   The version this feed advertises (semantic, three
