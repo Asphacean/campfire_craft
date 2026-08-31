@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-launcher"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "campfire-launcher-core",
  "serde",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-launcher-core"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "directories",
  "flate2",
