@@ -114,7 +114,7 @@ jobs:
     needs: build
     runs-on: [self-hosted, campfire-publish]
     permissions:
-      contents: read
+      contents: write
     steps:
       # No checkout: publish-launcher.sh resolves its own repo root from
       # the operator's real working tree, which is where server.env, the
@@ -202,3 +202,47 @@ jobs:
             --version "$VERSION" \
             --notes "Release ${TAG}" \
             "$WORKDIR"/*
+
+      # LNCH-08 gap-closure #3: tauri-plugin-updater's own reqwest client
+      # trusts only public webpki roots, so it can never complete TLS
+      # against our private-CA https://mc.campfire.pub:8444 endpoint (the
+      # Mac v0.1.5 UAT bug — "Update Now" failed with nothing logged, while
+      # campfire_launcher_core::update::check, which uses the pinned
+      # client, worked). The updater endpoint in tauri.conf.json now points
+      # at this GitHub release's own latest.json instead; publish this
+      # freshly signed one (same bytes, same minisign signature) as a
+      # release asset so `releases/latest/download/latest.json` always
+      # serves the newest tag's copy. Deletes any existing latest.json
+      # asset on this tag first so re-running a tag (a real path — see the
+      # v0.1.1/0.1.2/0.1.3 retries above) is idempotent rather than a
+      # 422 "asset already exists".
+      - name: Publish latest.json as a GitHub release asset (LNCH-08 gap-closure #3)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          FEED="/home/asphacean/rlcraft/launcher-dist/latest.json"
+          [ -f "$FEED" ] || { echo "FATAL: $FEED not found after publish-launcher.sh" >&2; exit 1; }
+
+          CURL_RETRY=(--retry 5 --retry-delay 5 --retry-all-errors)
+          AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json")
+
+          RELEASE_JSON="$(curl -fsSL "${CURL_RETRY[@]}" "${AUTH[@]}" "${API}/releases/tags/${TAG}")"
+          RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+          UPLOAD_BASE="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
+
+          EXISTING_ASSET_ID="$(jq -r '.assets[] | select(.name == "latest.json") | .id' <<<"$RELEASE_JSON")"
+          if [ -n "$EXISTING_ASSET_ID" ]; then
+            echo "Deleting existing latest.json asset (id $EXISTING_ASSET_ID) for idempotent re-run"
+            curl -fsSL "${CURL_RETRY[@]}" "${AUTH[@]}" -X DELETE "${API}/releases/assets/${EXISTING_ASSET_ID}"
+          fi
+
+          curl -fsSL "${CURL_RETRY[@]}" "${AUTH[@]}" \
+            -H "Content-Type: application/json" \
+            --data-binary @"$FEED" \
+            "${UPLOAD_BASE}?name=latest.json"
+
+          echo "Uploaded latest.json to release ${TAG} (release id ${RELEASE_ID})"
