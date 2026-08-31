@@ -10,7 +10,7 @@
 //! event bus (04-RESEARCH.md's "Don't Hand-Roll" row).
 
 use campfire_launcher_core::progress::Progress;
-use campfire_launcher_core::{auth, manifest, play as play_core, status, strings, system, update};
+use campfire_launcher_core::{auth, log, manifest, play as play_core, status, strings, system, update};
 use tauri::ipc::Channel;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -249,18 +249,29 @@ async fn check_update() -> Option<AvailableView> {
 /// window's one progress bar is reused rather than duplicated.
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle, on_event: Channel<Progress>) -> Result<(), String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| {
+        log::error(&format!("install-update: app.updater() failed: {e:?}"));
+        "generic".to_string()
+    })?;
     let update = updater
         .check()
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "generic".to_string())?;
+        .map_err(|e| {
+            log::error(&format!("install-update: plugin check() failed: {e:?}"));
+            "generic".to_string()
+        })?
+        .ok_or_else(|| {
+            log::error("install-update: plugin check() found no update (feed returned nothing newer)");
+            "generic".to_string()
+        })?;
+
+    log::info(&format!("install-update: downloading {} -> {}", env!("CARGO_PKG_VERSION"), update.version));
 
     let start = std::time::Instant::now();
     let downloaded = std::sync::atomic::AtomicU64::new(0);
     let content_total = std::sync::Mutex::new(0u64);
 
-    update
+    let result = update
         .download_and_install(
             |chunk_len, content_len| {
                 let so_far = downloaded.fetch_add(chunk_len as u64, std::sync::atomic::Ordering::Relaxed)
@@ -278,9 +289,29 @@ async fn install_update(app: tauri::AppHandle, on_event: Channel<Progress>) -> R
             },
             || {},
         )
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        .await;
+
+    match result {
+        Ok(()) => {
+            log::info(&format!(
+                "install-update: download+install finished for {} in {:.1}s",
+                update.version,
+                start.elapsed().as_secs_f64()
+            ));
+            Ok(())
+        }
+        Err(e) => {
+            // The full error chain (`{:?}`), not just `{e}` — a plugin TLS
+            // failure or a signature mismatch usually only shows up in the
+            // Debug source chain, and `install_update`'s only prior failure
+            // mode was a silent "Something went wrong" with nothing after
+            // it in launcher.log at all (this bug's whole observability
+            // gap). The UI sentence itself stays the generic `errorGeneric`
+            // string either way — only the log line carries detail.
+            log::error(&format!("install-update: download_and_install failed: {e:?}"));
+            Err("generic".to_string())
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

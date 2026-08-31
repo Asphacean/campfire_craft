@@ -39,7 +39,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://mc.campfire.pub:8444/launcher/latest.json"
+        "https://github.com/Asphacean/campfire_craft/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBOTdBRjg4MTUyMTEzRDIKUldUU0V5RVZpSytYZXZpblNrbU9mb25QMW5CSklHR2RkcEUwSEpmSmc5ZjdrT1Q4WkgzeUdYSDMK"
     }
