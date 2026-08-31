@@ -241,7 +241,11 @@ publish() {
     dest="$LAUNCHER_DIST_DIR/$filename"
     cp -f "${PLATFORM_FILES[$i]}" "$dest"
     sig="$(sign_artifact "$dest")"
-    url="https://${DOMAIN}:${HTTPS_PORT}/launcher/${filename}"
+    # The updater PLUGIN downloads this URL with the OS trust store — it can
+    # never accept our private CA, so packages must come from GitHub's
+    # publicly-trusted TLS (v0.1.8 Mac UAT: InvalidCertificate(UnknownIssuer)).
+    # Trust still rests on the minisign signature below, not the transport.
+    url="https://github.com/Asphacean/campfire_craft/releases/download/v${VERSION}/${filename}"
     platforms_json="$(jq --arg k "$platform" --arg url "$url" --arg sig "$sig" \
       '.[$k] = {"url": $url, "signature": $sig}' <<<"$platforms_json")"
     log "Published $filename as $platform"
