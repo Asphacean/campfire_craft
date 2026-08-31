@@ -95,3 +95,12 @@ The log file itself lives at:
 
 It never contains your password or any login token — those are always
 redacted — so it's safe to share.
+
+## If "Update Now" doesn't work on an older install
+
+If your launcher is version **0.1.5 or 0.1.6** and pressing "Update Now" in
+the update dialog fails, that's a known issue in those two builds' update
+mechanism — not something wrong on your end. The one-time fix: download the
+current installer from the release page above and install it over your
+existing one (same steps as the first install, above). Every launcher from
+0.1.7 onward updates itself normally after that.

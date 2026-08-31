@@ -3,7 +3,7 @@ status: testing
 phase: 05-release-to-friends
 source: [05-VERIFICATION.md]
 started: 2026-08-30T20:06:17Z
-updated: 2026-08-31T03:52:00Z
+updated: 2026-08-31T06:00:00Z
 ---
 
 ## Current Test
@@ -40,11 +40,15 @@ result: [passed] 2026-08-31: v0.1.5 release run fully green incl. publish job �
 expected: Per 01-UAT.md.
 result: [pending]
 
+### 5. Mac v0.1.5→0.1.6 "Update Now" transport gap (gap-closure #3)
+expected: On Mac, the modal offers the newer version and "Update Now" actually replaces the running binary, with launcher.log showing what happened either way.
+result: [issue found and fixed] Reported 2026-08-31: modal correctly offered 0.1.6, but "Update Now" produced a generic "Something went wrong" and launcher.log had nothing at all after "update-check: 0.1.5 -> 0.1.6 available". Root cause, two independent gaps: (a) `install_update` never logged any of its three failure points — fixed, the full Debug error chain is now logged to launcher.log before the (still-generic) error returns to the UI; (b) `tauri-plugin-updater` builds its own `reqwest` client with the plugin's default public-webpki trust store, which can never complete TLS against our private-CA `https://mc.campfire.pub:8444` endpoint — `core::update::check` (the startup banner) works only because it uses the pinned client, which the plugin has no option to use. Fixed by pointing `tauri.conf.json`'s `plugins.updater.endpoints` at `https://github.com/Asphacean/campfire_craft/releases/latest/download/latest.json` instead (minisign pubkey unchanged — trust is the per-file signature inside the feed, not the transport); `release.yml`'s publish job now uploads the signed `latest.json` as a release asset on each tag. `cargo test --workspace`/`clippy -D warnings`/`cargo tauri build --no-bundle` all pass. **Back-compat**: any launcher already installed at 0.1.5/0.1.6 has the old `:8444` endpoint baked into its own binary and cannot self-update past this fix — a one-time manual reinstall from `releases/latest` is required (docs/FRIENDS.md, docs/DIST-OPS.md); only the operator's own test installs are affected so far, no friend has installed yet. **Live proof pending** the v0.1.7 tag below.
+
 ## Summary
 
-total: 4
+total: 5
 passed: 0
-issues: 1
+issues: 2
 pending: 3
 skipped: 0
 blocked: 0
@@ -54,3 +58,4 @@ blocked: 0
 - **CR-01 checksum gate: root cause now confirmed and fixed, CI proof still pending** (test 3): three consecutive `scripts/release.sh` tags (v0.1.1, v0.1.2, v0.1.3), each hitting a different failure — a real macOS `sha256sum`/`xargs` portability bug (fixed, `279cc03`), a transient publish-job `curl` failure this Pi's own unauthenticated API polling likely aggravated (mitigated with retries, `646e7f4`), and v0.1.3's checksum-verification exit 1, now root-caused against the real failed-run artifacts and fixed (`dedc1ea`, see test 3 above). No new tag was cut this session (retry budget preserved) — the fix is only provable live on the *next* tagged release. In the meantime, the v0.1.3 feed was published manually as the operator (same commands the publish job runs) so the rest of phase 5's UAT isn't blocked waiting on that: `https://mc.campfire.pub:8444/launcher/latest.json` now correctly serves `0.1.3` with valid signatures.
   - **Options for a human to unblock full CI proof:** (a) `gh auth login` (or export a PAT) on this Pi so a future session can watch a live run's job-log text directly instead of inferring from `_diag`/artifact evidence; (b) cut the next real release (`scripts/release.sh`) whenever the project's normal cadence calls for one — the fix in `dedc1ea` needs nothing further from this session to be exercised; (c) treat the local manual publish above as sufficient proof of the artifacts/signing/feed path and accept CI-path confirmation as an ordinary "watch it once next time" follow-up rather than a blocking gap.
   - Test 2 (the original Mac UAT bug) has a code fix in place (`41c7894`, all workspace tests/clippy/build green) but has not been re-verified visually on real Apple Silicon hardware — no display exists on this Pi to confirm. The now-live `0.1.3` feed/assets carry this fix; a friend/operator with the actual hardware should redo test 2 against that build.
+- **Mac v0.1.5→0.1.6 "Update Now" transport gap: code fix in place, CI + Pi proof pending v0.1.7** (test 5): `install_update` now logs its full error chain, and the plugin updater endpoint moved from the private-CA `:8444` Pi feed to `https://github.com/Asphacean/campfire_craft/releases/latest/download/latest.json`, which `release.yml`'s publish job now uploads on every tag. `cargo test --workspace`/`clippy -D warnings`/`cargo tauri build --no-bundle` all green locally. Not yet proven live: the next `scripts/release.sh` tag (v0.1.7) must show both the Pi feed at `/launcher/latest.json` and the new GitHub `releases/latest/download/latest.json` URL serving the signed 0.1.7 feed. Any launcher already at 0.1.5/0.1.6 keeps the old broken endpoint baked in and needs a one-time manual reinstall (docs/FRIENDS.md) — a real but currently operator-only impact.

@@ -350,13 +350,46 @@ note for the full mechanism.
 
 ### The launcher self-update feed (Phase 4 plan 04, LNCH-08)
 
-`/launcher/latest.json` is the update feed every installed launcher checks
-on startup — the schema (`version`, `notes`, `pub_date`, `platforms.{windows-x86_64,darwin-x86_64,darwin-aarch64}.{url,signature}`)
-is `tauri-plugin-updater`'s own, fetched by
-`campfire_launcher_core::update::check` over the same pinned CA as every
-other campfire.pub request, and by nothing else — the actual signed
+`/launcher/latest.json` is published in two places, on purpose, because the
+two consumers use different HTTP clients with different trust roots:
+
+- **`campfire_launcher_core::update::check`** (the silent startup banner
+  check, LNCH-08) fetches `/launcher/latest.json` from this Pi over the
+  same pinned CA/client as every other campfire.pub request
+  (`http::campfire_client()`). This is our own host, so a private CA is
+  fine here.
+- **`tauri-plugin-updater`** (the actual signed download-and-install behind
+  "Update Now") uses its own `reqwest` client, built with the plugin's
+  default trust store — public webpki roots only, no way to hand it our
+  private CA. Pointed at `https://mc.campfire.pub:8444`, this client's TLS
+  handshake fails outright (**the v0.1.5 Mac UAT bug**: the modal correctly
+  offered 0.1.6, but "Update Now" always failed with nothing useful logged,
+  because `install_update` had no error logging of its own either — fixed
+  alongside the endpoint change below). `tauri.conf.json`'s
+  `plugins.updater.endpoints` therefore points at
+  `https://github.com/Asphacean/campfire_craft/releases/latest/download/latest.json`
+  instead — a public host the plugin's default trust store already
+  handles, serving the exact same file. The minisign `pubkey` embedded in
+  the binary is unchanged; trust still comes from the per-platform Ed25519
+  signature inside the feed (produced by the same pi-only key either way),
+  not from which host served the JSON — GitHub is transport only.
+  `releases/latest/download/<name>` always resolves to the current
+  release's own asset, so this needs no per-tag URL.
+
+The schema (`version`, `notes`, `pub_date`,
+`platforms.{windows-x86_64,darwin-x86_64,darwin-aarch64}.{url,signature}`)
+is `tauri-plugin-updater`'s own either way — the actual signed
 download-and-install goes through the plugin's own `Updater`/`Update`
 types in `src-tauri`, not this crate.
+
+**Back-compat gap.** Any launcher already installed at 0.1.5 or 0.1.6 has
+the old `:8444` endpoint baked into its own binary's `tauri.conf.json` at
+build time — a config value, not something a running app can update in
+place. Those installs' "Update Now" will keep failing (now with a real
+log line explaining why) until the person reinstalls from
+`releases/latest` by hand once; see `docs/FRIENDS.md`. As of this fix,
+only the operator's own 0.1.5/0.1.6 test installs are affected — no friend
+has installed yet.
 
 **Artifact naming** (Tauri's own updater-artifact convention;
 `scripts/publish-launcher.sh` reads the platform straight off the
@@ -378,7 +411,13 @@ signs it with the operator's own minisign key, and writes
 `latest.json` atomically (temp file + same-directory rename) — one
 re-runnable step, same shape as `scripts/publish-pack.sh`. Confirm with
 the `curl --cacert ca/campfire-ca.pem` command the script prints at the
-end.
+end. `release.yml`'s `publish` job runs this script and then, as its own
+next step, uploads the freshly written `launcher-dist/latest.json` as a
+`latest.json` release asset on the same tag (deleting any prior asset of
+that name first, so re-running a tag is idempotent) — that upload is what
+`tauri-plugin-updater`'s GitHub-hosted endpoint actually serves. A manual,
+by-hand run of this script (e.g. to republish an old version to the Pi
+feed) does **not** touch the GitHub release asset; only the CI job does.
 
 **Key custody.** The signing keypair was generated once with `cargo tauri
 signer generate`. The **private key lives at `~/.tauri/campfire.key` on
