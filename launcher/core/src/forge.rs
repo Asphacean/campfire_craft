@@ -22,7 +22,7 @@ use crate::http::public_client;
 use crate::java;
 use crate::log;
 use crate::mojang::{self, Library, VersionJson};
-use crate::paths::{game_dir, install_root, libraries_dir, versions_dir};
+use crate::paths::{game_dir, install_root, io_ctx, libraries_dir, versions_dir};
 use crate::progress::{Progress, ProgressSink};
 
 /// Note the `-forge-` separator, not `forge` bare — this exact string is
@@ -60,13 +60,9 @@ pub enum ForgeError {
     /// task 1's `ensure_vanilla` must run before this module can merge.
     VanillaMissing(String),
     Java(String),
+    /// Always built via `paths::io_ctx` — the operation and path an
+    /// `io::Error` failed on (gap-closure #4).
     Io(String),
-}
-
-impl ForgeError {
-    fn from_io(e: std::io::Error) -> Self {
-        ForgeError::Io(e.to_string())
-    }
 }
 
 /// The merged vanilla-plus-Forge version, ready for `launch.rs` to consume:
@@ -112,7 +108,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// path — skips the download entirely if already cached and correct.
 async fn ensure_installer_jar() -> Result<PathBuf, ForgeError> {
     let cache_dir = install_root().join("cache");
-    std::fs::create_dir_all(&cache_dir).map_err(ForgeError::from_io)?;
+    std::fs::create_dir_all(&cache_dir).map_err(|e| ForgeError::Io(io_ctx("create_dir_all", &cache_dir, e)))?;
     let dest = cache_dir.join("forge-1.12.2-14.23.5.2860-installer.jar");
 
     if let Ok(bytes) = std::fs::read(&dest) {
@@ -139,7 +135,7 @@ async fn ensure_installer_jar() -> Result<PathBuf, ForgeError> {
     if actual != FORGE_INSTALLER_SHA256 {
         return Err(ForgeError::ChecksumMismatch);
     }
-    std::fs::write(&dest, &bytes).map_err(ForgeError::from_io)?;
+    std::fs::write(&dest, &bytes).map_err(|e| ForgeError::Io(io_ctx("write", &dest, e)))?;
     log::info(&format!("forge: installer downloaded and verified sha256={actual}"));
     Ok(dest)
 }
@@ -151,9 +147,11 @@ async fn ensure_installer_jar() -> Result<PathBuf, ForgeError> {
 /// is launched with, so this second, defensive write costs one tiny file
 /// and closes that gap too.
 fn write_profile_stub() -> Result<(), ForgeError> {
-    std::fs::write(install_root().join("launcher_profiles.json"), LAUNCHER_PROFILES_STUB)
-        .map_err(ForgeError::from_io)?;
-    std::fs::write(game_dir().join("launcher_profiles.json"), LAUNCHER_PROFILES_STUB).map_err(ForgeError::from_io)?;
+    let install_stub = install_root().join("launcher_profiles.json");
+    std::fs::write(&install_stub, LAUNCHER_PROFILES_STUB)
+        .map_err(|e| ForgeError::Io(io_ctx("write", &install_stub, e)))?;
+    let game_stub = game_dir().join("launcher_profiles.json");
+    std::fs::write(&game_stub, LAUNCHER_PROFILES_STUB).map_err(|e| ForgeError::Io(io_ctx("write", &game_stub, e)))?;
     Ok(())
 }
 

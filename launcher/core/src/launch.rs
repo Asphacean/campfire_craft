@@ -14,7 +14,7 @@ use crate::auth::Session;
 use crate::forge::MergedVersion;
 use crate::log;
 use crate::mojang;
-use crate::paths::{assets_dir, game_dir, libraries_dir, log_path, runtime_dir, versions_dir};
+use crate::paths::{assets_dir, game_dir, io_ctx, libraries_dir, log_path, runtime_dir, versions_dir};
 
 /// `mc.campfire.pub:25565` — the Minecraft server itself, distinct from the
 /// HTTPS distribution point (`mc.campfire.pub:8444`). No autoconnect
@@ -73,13 +73,9 @@ pub enum LaunchError {
     /// launcher's own provisioned runtime, never a system one.
     JavaOutsideRuntime,
     Extract(String),
+    /// Always built via `paths::io_ctx` — the operation and path an
+    /// `io::Error` failed on (gap-closure #4).
     Io(String),
-}
-
-impl LaunchError {
-    fn from_io(e: std::io::Error) -> Self {
-        LaunchError::Io(e.to_string())
-    }
 }
 
 /// The version-3 UUID Minecraft's offline mode uses:
@@ -137,7 +133,7 @@ pub fn extract_natives(merged: &MergedVersion) -> Result<PathBuf, LaunchError> {
     if already_populated {
         return Ok(dest);
     }
-    std::fs::create_dir_all(&dest).map_err(LaunchError::from_io)?;
+    std::fs::create_dir_all(&dest).map_err(|e| LaunchError::Io(io_ctx("create_dir_all", &dest, e)))?;
 
     let os_name = mojang::current_os_name();
     for lib in &merged.libraries {
@@ -164,7 +160,7 @@ pub fn extract_natives(merged: &MergedVersion) -> Result<PathBuf, LaunchError> {
 }
 
 fn extract_native_archive(archive: &Path, dest: &Path, exclude: &[String]) -> Result<(), LaunchError> {
-    let file = std::fs::File::open(archive).map_err(LaunchError::from_io)?;
+    let file = std::fs::File::open(archive).map_err(|e| LaunchError::Io(io_ctx("open", archive, e)))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| LaunchError::Extract(e.to_string()))?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| LaunchError::Extract(e.to_string()))?;
@@ -178,10 +174,10 @@ fn extract_native_archive(archive: &Path, dest: &Path, exclude: &[String]) -> Re
         crate::java::assert_safe_archive_entry(&name).map_err(|e| LaunchError::Extract(format!("{e:?}")))?;
         let out_path = dest.join(&name);
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(LaunchError::from_io)?;
+            std::fs::create_dir_all(parent).map_err(|e| LaunchError::Io(io_ctx("create_dir_all", parent, e)))?;
         }
-        let mut out = std::fs::File::create(&out_path).map_err(LaunchError::from_io)?;
-        std::io::copy(&mut entry, &mut out).map_err(LaunchError::from_io)?;
+        let mut out = std::fs::File::create(&out_path).map_err(|e| LaunchError::Io(io_ctx("create", &out_path, e)))?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| LaunchError::Io(io_ctx("copy into", &out_path, e)))?;
     }
     Ok(())
 }
@@ -334,7 +330,12 @@ pub fn build_launch_command(
 /// separate from `build_launch_command` so the command line is assertable
 /// on a machine — this one — that cannot run it at all.
 pub fn spawn(argv: &[String]) -> std::io::Result<std::process::Child> {
-    let out = std::fs::OpenOptions::new().create(true).append(true).open(log_path())?;
+    let log = log_path();
+    let out = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)
+        .map_err(|e| std::io::Error::new(e.kind(), io_ctx("open", &log, e)))?;
     let err = out.try_clone()?;
     std::process::Command::new(&argv[0])
         .args(&argv[1..])
@@ -342,6 +343,7 @@ pub fn spawn(argv: &[String]) -> std::io::Result<std::process::Child> {
         .stdout(out)
         .stderr(err)
         .spawn()
+        .map_err(|e| std::io::Error::new(e.kind(), io_ctx("spawn", Path::new(&argv[0]), e)))
 }
 
 #[cfg(test)]

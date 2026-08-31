@@ -207,7 +207,7 @@ pub(crate) fn assert_safe_archive_entry(name: &str) -> Result<(), JavaError> {
 }
 
 fn extract_zip(archive_path: &Path, dest: &Path) -> Result<(), JavaError> {
-    let file = std::fs::File::open(archive_path)?;
+    let file = std::fs::File::open(archive_path).map_err(|e| JavaError::Io(crate::paths::io_ctx("open", archive_path, e)))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| JavaError::Extract(e.to_string()))?;
     for i in 0..zip.len() {
         let mut entry = zip
@@ -217,20 +217,22 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<(), JavaError> {
         assert_safe_archive_entry(&name)?;
         let out_path = dest.join(&name);
         if entry.is_dir() {
-            std::fs::create_dir_all(&out_path)?;
+            std::fs::create_dir_all(&out_path).map_err(|e| JavaError::Io(crate::paths::io_ctx("create_dir_all", &out_path, e)))?;
         } else {
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)?;
+                std::fs::create_dir_all(parent).map_err(|e| JavaError::Io(crate::paths::io_ctx("create_dir_all", parent, e)))?;
             }
-            let mut out_file = std::fs::File::create(&out_path)?;
-            std::io::copy(&mut entry, &mut out_file).map_err(JavaError::from)?;
+            let mut out_file = std::fs::File::create(&out_path)
+                .map_err(|e| JavaError::Io(crate::paths::io_ctx("create", &out_path, e)))?;
+            std::io::copy(&mut entry, &mut out_file)
+                .map_err(|e| JavaError::Io(crate::paths::io_ctx("copy into", &out_path, e)))?;
         }
     }
     Ok(())
 }
 
 fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), JavaError> {
-    let file = std::fs::File::open(archive_path)?;
+    let file = std::fs::File::open(archive_path).map_err(|e| JavaError::Io(crate::paths::io_ctx("open", archive_path, e)))?;
     let gz = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(gz);
     let entries = archive
@@ -246,11 +248,11 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), JavaError> {
         assert_safe_archive_entry(&entry_path)?;
         let out_path = dest.join(&entry_path);
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).map_err(|e| JavaError::Io(crate::paths::io_ctx("create_dir_all", parent, e)))?;
         }
         entry
             .unpack(&out_path)
-            .map_err(|e| JavaError::Extract(e.to_string()))?;
+            .map_err(|e| JavaError::Io(crate::paths::io_ctx("unpack", &out_path, e)))?;
     }
     Ok(())
 }
@@ -260,7 +262,9 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), JavaError> {
 /// find it by looking for the one that actually contains the resolved java
 /// executable, rather than assuming a naming convention.
 fn locate_extracted_root(extract_dir: &Path, java_rel: &str) -> Result<PathBuf, JavaError> {
-    for entry in std::fs::read_dir(extract_dir)?.flatten() {
+    let entries =
+        std::fs::read_dir(extract_dir).map_err(|e| JavaError::Io(crate::paths::io_ctx("read_dir", extract_dir, e)))?;
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() && path.join(java_rel).is_file() {
             return Ok(path);
@@ -289,10 +293,9 @@ fn write_marker(release: &str, target: Target, java_path: &Path) -> std::io::Res
         target: target.as_str().to_string(),
         java: java_path.to_string_lossy().to_string(),
     };
-    std::fs::write(
-        marker_path(),
-        serde_json::to_vec_pretty(&marker).expect("CurrentJava always serializes"),
-    )
+    let path = marker_path();
+    std::fs::write(&path, serde_json::to_vec_pretty(&marker).expect("CurrentJava always serializes"))
+        .map_err(|e| std::io::Error::new(e.kind(), crate::paths::io_ctx("write", &path, e)))
 }
 
 /// What `java-probe` reads: the last-recorded release, target and resolved
@@ -368,8 +371,8 @@ pub async fn ensure_java(target: Target) -> Result<JavaProvision, JavaError> {
     ));
 
     let runtime_dir = crate::paths::runtime_dir();
-    let pid = std::process::id();
-    let tmp_archive = runtime_dir.join(format!(".tmp-archive-{pid}"));
+    let unique = crate::paths::unique_tmp_suffix();
+    let tmp_archive = runtime_dir.join(format!(".tmp-archive-{unique}"));
 
     let mut resp = public_client()
         .get(&resolved.link)
@@ -385,19 +388,25 @@ pub async fn ensure_java(target: Target) -> Result<JavaProvision, JavaError> {
     }
 
     let download_result: Result<String, JavaError> = async {
-        let mut file = tokio::fs::File::create(&tmp_archive).await?;
+        let mut file = tokio::fs::File::create(&tmp_archive)
+            .await
+            .map_err(|e| JavaError::Io(crate::paths::io_ctx("create", &tmp_archive, e)))?;
         let mut hasher = Sha256::new();
         loop {
             match resp.chunk().await {
                 Ok(Some(chunk)) => {
                     hasher.update(&chunk);
-                    file.write_all(&chunk).await?;
+                    file.write_all(&chunk)
+                        .await
+                        .map_err(|e| JavaError::Io(crate::paths::io_ctx("write", &tmp_archive, e)))?;
                 }
                 Ok(None) => break,
                 Err(e) => return Err(JavaError::Network(e.to_string())),
             }
         }
-        file.flush().await?;
+        file.flush()
+            .await
+            .map_err(|e| JavaError::Io(crate::paths::io_ctx("flush", &tmp_archive, e)))?;
         Ok(to_hex(&hasher.finalize()))
     }
     .await;
@@ -421,11 +430,11 @@ pub async fn ensure_java(target: Target) -> Result<JavaProvision, JavaError> {
         resolved.release_name
     ));
 
-    let tmp_extract = runtime_dir.join(format!(".tmp-extract-{pid}"));
+    let tmp_extract = runtime_dir.join(format!(".tmp-extract-{unique}"));
     let _ = std::fs::remove_dir_all(&tmp_extract);
     if let Err(e) = std::fs::create_dir_all(&tmp_extract) {
         let _ = std::fs::remove_file(&tmp_archive);
-        return Err(JavaError::from(e));
+        return Err(JavaError::Io(crate::paths::io_ctx("create_dir_all", &tmp_extract, e)));
     }
 
     let extract_result = match spec.archive {
@@ -448,14 +457,18 @@ pub async fn ensure_java(target: Target) -> Result<JavaProvision, JavaError> {
     };
 
     if let Some(parent) = release_dir.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent).map_err(|e| JavaError::Io(crate::paths::io_ctx("create_dir_all", parent, e)))?;
     }
     // A half-extracted runtime that looks present is worse than an absent
     // one: extraction happens entirely in a temporary sibling directory,
     // renamed into place only after every entry has been written.
     if let Err(e) = std::fs::rename(&extracted_root, &release_dir) {
         let _ = std::fs::remove_dir_all(&tmp_extract);
-        return Err(JavaError::from(e));
+        return Err(JavaError::Io(crate::paths::io_ctx(
+            &format!("rename {} to", extracted_root.display()),
+            &release_dir,
+            e,
+        )));
     }
     let _ = std::fs::remove_dir_all(&tmp_extract);
 
@@ -574,8 +587,14 @@ mod tests {
 
     #[test]
     fn every_resolved_java_path_lives_under_the_runtime_directory() {
+        // gap-closure #4: shared with `paths.rs`'s own CAMPFIRE_HOME-mutating
+        // tests — `cargo test` runs unit tests from multiple threads in one
+        // process, and two tests each doing their own unguarded
+        // `set_var`/`remove_var("CAMPFIRE_HOME")` race.
+        let _guard = crate::paths::CAMPFIRE_HOME_TEST_LOCK.lock().unwrap();
         let tmp = std::env::temp_dir().join(format!("campfire-java-test-{}", std::process::id()));
-        // SAFETY: test-only, single-threaded within this test's lifetime.
+        // SAFETY: test-only; `_guard` above serializes every test in this
+        // crate that touches CAMPFIRE_HOME.
         unsafe {
             std::env::set_var("CAMPFIRE_HOME", &tmp);
         }

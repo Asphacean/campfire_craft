@@ -20,7 +20,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::http::public_client;
 use crate::log;
-use crate::paths::{assets_dir, libraries_dir, versions_dir};
+use crate::paths::{assets_dir, io_ctx, libraries_dir, unique_tmp_suffix, versions_dir};
 use crate::progress::{Progress, ProgressSink};
 
 /// The only two Mojang/Minecraft hosts this module ever names as a
@@ -47,13 +47,10 @@ pub enum MojangError {
     HashMismatch { what: String },
     NotFound(String),
     Json(String),
+    /// Always built via `paths::io_ctx` — the operation and path an
+    /// `io::Error` failed on, never a bare OS message (gap-closure #4:
+    /// `io::Error`'s own `Display` names neither).
     Io(String),
-}
-
-impl MojangError {
-    fn from_io(e: std::io::Error) -> Self {
-        MojangError::Io(e.to_string())
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -236,11 +233,11 @@ fn sha1_of_file(path: &Path) -> Option<String> {
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), MojangError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(MojangError::from_io)?;
+        std::fs::create_dir_all(parent).map_err(|e| MojangError::Io(io_ctx("create_dir_all", parent, e)))?;
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&tmp, bytes).map_err(MojangError::from_io)?;
-    std::fs::rename(&tmp, path).map_err(MojangError::from_io)?;
+    let tmp = path.with_extension(format!("tmp-{}", unique_tmp_suffix()));
+    std::fs::write(&tmp, bytes).map_err(|e| MojangError::Io(io_ctx("write", &tmp, e)))?;
+    std::fs::rename(&tmp, path).map_err(|e| MojangError::Io(io_ctx("rename", &tmp, e)))?;
     Ok(())
 }
 
@@ -276,7 +273,7 @@ async fn download_sha1_verified(
     let parent = dest
         .parent()
         .ok_or_else(|| MojangError::Io(format!("no parent directory for {}", dest.display())))?;
-    std::fs::create_dir_all(parent).map_err(MojangError::from_io)?;
+    std::fs::create_dir_all(parent).map_err(|e| MojangError::Io(io_ctx("create_dir_all", parent, e)))?;
 
     let mut resp = client
         .get(url)
@@ -288,10 +285,12 @@ async fn download_sha1_verified(
     }
 
     let file_name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("download");
-    let tmp = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
+    let tmp = parent.join(format!(".{file_name}.tmp-{}", unique_tmp_suffix()));
 
     let result: Result<(u64, String), MojangError> = async {
-        let mut file = tokio::fs::File::create(&tmp).await.map_err(MojangError::from_io)?;
+        let mut file = tokio::fs::File::create(&tmp)
+            .await
+            .map_err(|e| MojangError::Io(io_ctx("create", &tmp, e)))?;
         let mut hasher = sha1_smol::Sha1::new();
         let mut size = 0u64;
         loop {
@@ -299,13 +298,15 @@ async fn download_sha1_verified(
                 Ok(Some(chunk)) => {
                     hasher.update(&chunk);
                     size += chunk.len() as u64;
-                    file.write_all(&chunk).await.map_err(MojangError::from_io)?;
+                    file.write_all(&chunk)
+                        .await
+                        .map_err(|e| MojangError::Io(io_ctx("write", &tmp, e)))?;
                 }
                 Ok(None) => break,
                 Err(e) => return Err(MojangError::Network(e.to_string())),
             }
         }
-        file.flush().await.map_err(MojangError::from_io)?;
+        file.flush().await.map_err(|e| MojangError::Io(io_ctx("flush", &tmp, e)))?;
         Ok((size, hasher.digest().to_string()))
     }
     .await;
@@ -323,7 +324,9 @@ async fn download_sha1_verified(
             what: dest.display().to_string(),
         });
     }
-    tokio::fs::rename(&tmp, dest).await.map_err(MojangError::from_io)?;
+    tokio::fs::rename(&tmp, dest)
+        .await
+        .map_err(|e| MojangError::Io(io_ctx(&format!("rename {} to", tmp.display()), dest, e)))?;
     Ok(size)
 }
 
@@ -352,7 +355,8 @@ pub fn version_json_path() -> PathBuf {
 /// to load the `inheritsFrom` parent for its merge. Fails if `ensure_vanilla`
 /// hasn't run yet.
 pub fn load_version_json() -> Result<VersionJson, MojangError> {
-    let bytes = std::fs::read(version_json_path()).map_err(MojangError::from_io)?;
+    let path = version_json_path();
+    let bytes = std::fs::read(&path).map_err(|e| MojangError::Io(io_ctx("read", &path, e)))?;
     serde_json::from_slice(&bytes).map_err(|e| MojangError::Json(e.to_string()))
 }
 
