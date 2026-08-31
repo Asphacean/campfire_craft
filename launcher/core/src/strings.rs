@@ -29,6 +29,13 @@ pub const ERROR_SERVER_UNREACHABLE: &str = "Can't reach campfire.pub. Check your
 pub const ERROR_JAVA_DOWNLOAD_FAILED: &str = "Couldn't set up Java.";
 pub const ERROR_DISK_FULL: &str = "Not enough disk space to continue.";
 pub const ERROR_SESSION_EXPIRED: &str = "Your session expired — log in again.";
+/// UAT gap-closure #2: `SyncError::ManifestRejected` used to share
+/// `ERROR_SERVER_UNREACHABLE`'s sentence with `SyncError::Network` — a
+/// safety-check rejection is not the same failure as an unreachable server,
+/// and telling someone to "check your internet connection" for a rejected
+/// manifest sent them down the wrong troubleshooting path entirely.
+pub const ERROR_MANIFEST_REJECTED: &str =
+    "The server's file list failed a safety check — press 'Open log' and tell the operator.";
 /// The fallback for every error the play sequence can produce that has no
 /// sentence of its own (D-08: "everything else falls back to a generic
 /// sentence that still names the log").
@@ -46,6 +53,7 @@ pub fn play_error_sentence(code: &str) -> &'static str {
     match code {
         "wrong_password" => ERROR_WRONG_PASSWORD,
         "server_unreachable" => ERROR_SERVER_UNREACHABLE,
+        "manifest_rejected" => ERROR_MANIFEST_REJECTED,
         "java_error" => ERROR_JAVA_DOWNLOAD_FAILED,
         "disk_full" => ERROR_DISK_FULL,
         "session_expired" => ERROR_SESSION_EXPIRED,
@@ -94,6 +102,7 @@ pub fn as_json() -> serde_json::Value {
         "statusOffline": STATUS_OFFLINE,
         "errorWrongPassword": ERROR_WRONG_PASSWORD,
         "errorServerUnreachable": ERROR_SERVER_UNREACHABLE,
+        "errorManifestRejected": ERROR_MANIFEST_REJECTED,
         "errorJavaDownloadFailed": ERROR_JAVA_DOWNLOAD_FAILED,
         "errorDiskFull": ERROR_DISK_FULL,
         "errorSessionExpired": ERROR_SESSION_EXPIRED,

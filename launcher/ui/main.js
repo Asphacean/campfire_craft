@@ -113,6 +113,13 @@ function mapPlayErrorCode(code) {
       return STRINGS.errorWrongPassword;
     case "server_unreachable":
       return STRINGS.errorServerUnreachable;
+    // UAT gap-closure #2: a rejected manifest (safety-check failure) is
+    // not the same problem as an unreachable server — it used to fall
+    // into `default:` below, which returned the unreachable-server
+    // sentence and pointed at the wrong fix ("check your internet
+    // connection") for a failure that had nothing to do with connectivity.
+    case "manifest_rejected":
+      return STRINGS.errorManifestRejected;
     case "java_error":
       return STRINGS.errorJavaDownloadFailed;
     case "disk_full":
@@ -120,6 +127,12 @@ function mapPlayErrorCode(code) {
     case "session_expired":
       return STRINGS.errorSessionExpired;
     default:
+      // UAT gap-closure #2: this used to return errorServerUnreachable,
+      // which claimed a connectivity problem for every unnamed failure
+      // (Java/Vanilla/Forge/Launch/Spawn all collapse to "generic") —
+      // actively misleading when the real cause was unrelated to the
+      // network. The generic sentence still tells the person to open the
+      // log, which now always names the real cause (see play.rs/manifest.rs).
       return STRINGS.errorGeneric;
   }
 }

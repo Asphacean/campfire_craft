@@ -84,12 +84,42 @@ pub enum SyncError {
 
 impl SyncError {
     fn from_io(e: std::io::Error) -> Self {
-        match e.kind() {
+        let mapped = match e.kind() {
             std::io::ErrorKind::StorageFull => SyncError::DiskFull,
             std::io::ErrorKind::PermissionDenied => SyncError::Permission(e.to_string()),
             _ => SyncError::Io(e.to_string()),
-        }
+        };
+        // UAT gap-closure #2: a sync error used to reach the UI's generic
+        // "server unreachable" sentence with nothing in `launcher.log` to
+        // say why — every I/O failure behind a sync now names its own
+        // cause at the point it's converted.
+        log::error(&format!("sync: I/O error — {mapped:?} (source: {e})"));
+        mapped
     }
+}
+
+/// Walks a `reqwest::Error`'s `source()` chain (transport/TLS/DNS causes
+/// `reqwest`'s own `Display` often omits) into one log-friendly line —
+/// UAT gap-closure #2's "reqwest source() chain" requirement.
+fn reqwest_error_detail(e: &reqwest::Error) -> String {
+    let mut msg = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        msg.push_str(" <- ");
+        msg.push_str(&s.to_string());
+        source = s.source();
+    }
+    msg
+}
+
+/// Every `SyncError::ManifestRejected` is constructed through here so the
+/// reason reaches `launcher.log` at the exact point of rejection, not just
+/// as an opaque `"server_unreachable"` sentence in the UI (UAT gap-closure
+/// #2 — a Mac sync failure after "manifest pinned" used to log nothing at
+/// all).
+fn manifest_rejected(reason: String) -> SyncError {
+    log::error(&format!("sync: manifest rejected — {reason}"));
+    SyncError::ManifestRejected(reason)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -141,23 +171,23 @@ fn lexically_join(base: &Path, rel: &str) -> PathBuf {
 
 fn validate_field(value: &str, real_dest: &Path) -> Result<(), SyncError> {
     if value.starts_with('/') {
-        return Err(SyncError::ManifestRejected(format!(
+        return Err(manifest_rejected(format!(
             "manifest path/url is absolute: {value}"
         )));
     }
     if value.split('/').any(|c| c == "..") {
-        return Err(SyncError::ManifestRejected(format!(
+        return Err(manifest_rejected(format!(
             "manifest path/url contains a parent-directory component: {value}"
         )));
     }
     if value.chars().any(|c| (c as u32) < 0x20 || (c as u32) == 0x7F) {
-        return Err(SyncError::ManifestRejected(format!(
+        return Err(manifest_rejected(format!(
             "manifest path/url contains a control character: {value}"
         )));
     }
     let joined = lexically_join(real_dest, value);
     if !joined.starts_with(real_dest) {
-        return Err(SyncError::ManifestRejected(format!(
+        return Err(manifest_rejected(format!(
             "manifest path/url resolves outside the game directory: {value}"
         )));
     }
@@ -180,7 +210,7 @@ pub fn validate(manifest: &Manifest, game_dir: &Path) -> Result<(), SyncError> {
         if FORBIDDEN_PREFIXES.iter().any(|p| entry.path.starts_with(p))
             || looks_like_minecraft_client_jar(basename)
         {
-            return Err(SyncError::ManifestRejected(format!(
+            return Err(manifest_rejected(format!(
                 "DIST-03 violated — manifest references a Minecraft client/library/asset path: {}",
                 entry.path
             )));
@@ -188,7 +218,7 @@ pub fn validate(manifest: &Manifest, game_dir: &Path) -> Result<(), SyncError> {
     }
     for path in &manifest.delete {
         if path.starts_with('/') || path.split('/').any(|c| c == "..") {
-            return Err(SyncError::ManifestRejected(format!(
+            return Err(manifest_rejected(format!(
                 "delete[] entry fails the path guard: {path}"
             )));
         }
@@ -203,28 +233,29 @@ pub fn validate(manifest: &Manifest, game_dir: &Path) -> Result<(), SyncError> {
 /// every other guard rule, not a per-entry skip.
 pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, SyncError> {
     serde_json::from_slice(bytes).map_err(|e| {
-        SyncError::ManifestRejected(format!(
+        manifest_rejected(format!(
             "manifest is not valid JSON or is missing a required field: {e}"
         ))
     })
 }
 
 pub async fn fetch_manifest() -> Result<Manifest, SyncError> {
-    let resp = campfire_client()
-        .get(format!("{}/manifest.json", campfire_base_url()))
-        .send()
-        .await
-        .map_err(|e| SyncError::Network(e.to_string()))?;
+    let url = format!("{}/manifest.json", campfire_base_url());
+    let resp = campfire_client().get(&url).send().await.map_err(|e| {
+        let detail = reqwest_error_detail(&e);
+        log::error(&format!("sync: manifest fetch failed — GET {url}: {detail}"));
+        SyncError::Network(format!("GET {url} failed: {detail}"))
+    })?;
     if !resp.status().is_success() {
-        return Err(SyncError::Network(format!(
-            "manifest fetch returned HTTP {}",
-            resp.status()
-        )));
+        let detail = format!("GET {url} returned HTTP {}", resp.status());
+        log::error(&format!("sync: {detail}"));
+        return Err(SyncError::Network(detail));
     }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| SyncError::Network(e.to_string()))?;
+    let bytes = resp.bytes().await.map_err(|e| {
+        let detail = reqwest_error_detail(&e);
+        log::error(&format!("sync: reading manifest body from {url} failed: {detail}"));
+        SyncError::Network(format!("reading manifest body from {url} failed: {detail}"))
+    })?;
     parse_manifest(&bytes)
 }
 
@@ -246,7 +277,7 @@ fn assert_never_touch(rel_path: &str) -> Result<(), SyncError> {
             .iter()
             .any(|p| p.eq_ignore_ascii_case(rel_path))
     {
-        return Err(SyncError::ManifestRejected(format!(
+        return Err(manifest_rejected(format!(
             "refusing to touch protected path: {rel_path}"
         )));
     }
@@ -306,7 +337,7 @@ async fn download_one(
     let dest_path = game_dir.join(&entry.path);
     let parent = dest_path
         .parent()
-        .ok_or_else(|| SyncError::ManifestRejected(format!("no parent directory for {}", entry.path)))?;
+        .ok_or_else(|| manifest_rejected(format!("no parent directory for {}", entry.path)))?;
     std::fs::create_dir_all(parent).map_err(SyncError::from_io)?;
 
     let url = format!(
@@ -314,17 +345,15 @@ async fn download_one(
         campfire_base_url(),
         percent_encode_path(&entry.url)
     );
-    let mut resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| SyncError::Network(e.to_string()))?;
+    let mut resp = client.get(&url).send().await.map_err(|e| {
+        let detail = reqwest_error_detail(&e);
+        log::error(&format!("sync: download failed — GET {url}: {detail}"));
+        SyncError::Network(format!("GET {url} failed: {detail}"))
+    })?;
     if !resp.status().is_success() {
-        return Err(SyncError::Network(format!(
-            "HTTP {} fetching {}",
-            resp.status(),
-            entry.path
-        )));
+        let detail = format!("HTTP {} fetching {} (url={url})", resp.status(), entry.path);
+        log::error(&format!("sync: download failed — {detail}"));
+        return Err(SyncError::Network(detail));
     }
 
     let file_name = dest_path
@@ -347,7 +376,11 @@ async fn download_one(
                     file.write_all(&chunk).await.map_err(SyncError::from_io)?;
                 }
                 Ok(None) => break,
-                Err(e) => return Err(SyncError::Network(e.to_string())),
+                Err(e) => {
+                    let detail = reqwest_error_detail(&e);
+                    log::error(&format!("sync: download failed mid-stream — GET {url}: {detail}"));
+                    return Err(SyncError::Network(format!("GET {url} failed mid-stream: {detail}")));
+                }
             }
         }
         file.flush().await.map_err(SyncError::from_io)?;
@@ -365,6 +398,10 @@ async fn download_one(
 
     if size != entry.size || actual_hash != entry.sha256 {
         let _ = tokio::fs::remove_file(&tmp_path).await;
+        log::error(&format!(
+            "sync: hash mismatch — {} (url={url}, expected size={} got {size}, expected sha256={} got {actual_hash})",
+            entry.path, entry.size, entry.sha256
+        ));
         return Err(SyncError::HashMismatch {
             path: entry.path.clone(),
         });
@@ -647,6 +684,21 @@ pub async fn verify(sink: crate::progress::ProgressSink) -> Result<VerifyReport,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Platform audit (UAT gap-closure #2): a real pack filename with a
+    /// space (e.g. `mods/Applied Energistics 2.jar`, common on every
+    /// shipped platform, not just macOS) must round-trip through the
+    /// download URL as the exact bytes the server's `/pack/` route expects
+    /// — a space that leaked through unencoded would break the request on
+    /// every platform, and this asserts the exact encoded shape rather than
+    /// merely "doesn't panic".
+    #[test]
+    fn percent_encode_path_encodes_spaces_and_preserves_slashes() {
+        assert_eq!(
+            percent_encode_path("mods/Applied Energistics 2.jar"),
+            "mods/Applied%20Energistics%202.jar"
+        );
+    }
 
     fn scratch_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

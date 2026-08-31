@@ -49,9 +49,13 @@ impl PlayError {
             }
             PlayError::Auth(AuthError::Network) => "server_unreachable",
             PlayError::Auth(_) => "generic",
-            PlayError::Sync(SyncError::Network(_)) | PlayError::Sync(SyncError::ManifestRejected(_)) => {
-                "server_unreachable"
-            }
+            PlayError::Sync(SyncError::Network(_)) => "server_unreachable",
+            // UAT gap-closure #2: a rejected manifest (safety-check
+            // failure) is a distinct failure from an unreachable server —
+            // collapsing them under one sentence sent people down the
+            // wrong troubleshooting path ("check your internet
+            // connection" when the real problem was a bad manifest).
+            PlayError::Sync(SyncError::ManifestRejected(_)) => "manifest_rejected",
             PlayError::Sync(SyncError::DiskFull) => "disk_full",
             PlayError::Sync(_) => "generic",
             // Every Java failure — including the Apple Silicon
@@ -120,6 +124,7 @@ pub async fn play(
     });
     let refresh_token = auth::load_refresh_for(nick).ok_or(PlayError::Auth(AuthError::NoStoredSession))?;
     let (session, new_refresh) = auth::refresh(nick, &refresh_token).await.map_err(|e| {
+        log::info(&format!("play: auth refresh failed for nick={nick}: {e:?}"));
         sink(Progress::Failed {
             code: PlayError::Auth(e).code().to_string(),
         });
@@ -140,21 +145,30 @@ pub async fn play(
         total: TOTAL_STEPS,
     });
     let target = resolve_target();
-    let java_provision = java::ensure_java(target).await.map_err(PlayError::Java)?;
+    let java_provision = java::ensure_java(target).await.map_err(|e| {
+        log::info(&format!("play: java setup failed: {e:?}"));
+        PlayError::Java(e)
+    })?;
 
     sink(Progress::Step {
         name: "Fetching Minecraft files".to_string(),
         current: 4,
         total: TOTAL_STEPS,
     });
-    mojang::ensure_vanilla(sink.clone()).await.map_err(PlayError::Vanilla)?;
+    mojang::ensure_vanilla(sink.clone()).await.map_err(|e| {
+        log::info(&format!("play: fetching Minecraft files failed: {e:?}"));
+        PlayError::Vanilla(e)
+    })?;
 
     sink(Progress::Step {
         name: "Installing Forge".to_string(),
         current: 5,
         total: TOTAL_STEPS,
     });
-    let (_report, merged) = forge::ensure_forge(sink.clone()).await.map_err(PlayError::Forge)?;
+    let (_report, merged) = forge::ensure_forge(sink.clone()).await.map_err(|e| {
+        log::info(&format!("play: installing Forge failed: {e:?}"));
+        PlayError::Forge(e)
+    })?;
 
     sink(Progress::Step {
         name: "Launching".to_string(),
@@ -163,7 +177,10 @@ pub async fn play(
     });
     launch::seed_server_list();
     let argv = launch::build_launch_command(&session, ram_gb, &merged, &java_provision.java_path, true)
-        .map_err(PlayError::Launch)?;
+        .map_err(|e| {
+            log::info(&format!("play: building the launch command failed: {e:?}"));
+            PlayError::Launch(e)
+        })?;
     log::info(&format!(
         "play: sequence complete for nick={} (spawn_game={spawn_game})",
         session.nick
@@ -193,16 +210,43 @@ mod tests {
         let server_unreachable = PlayError::Auth(AuthError::Network).code();
         let disk_full = PlayError::Sync(SyncError::DiskFull).code();
         let java_error = PlayError::Java(JavaError::ChecksumMismatch).code();
+        let manifest_rejected = PlayError::Sync(SyncError::ManifestRejected("x".into())).code();
 
-        for code in [wrong_password, session_expired, server_unreachable, disk_full, java_error] {
+        for code in [
+            wrong_password,
+            session_expired,
+            server_unreachable,
+            disk_full,
+            java_error,
+            manifest_rejected,
+        ] {
             assert!(!code.is_empty());
         }
-        let all = [wrong_password, session_expired, server_unreachable, disk_full, java_error];
+        let all = [
+            wrong_password,
+            session_expired,
+            server_unreachable,
+            disk_full,
+            java_error,
+            manifest_rejected,
+        ];
         for i in 0..all.len() {
             for j in (i + 1)..all.len() {
                 assert_ne!(all[i], all[j], "codes at {i} and {j} collided: {}", all[i]);
             }
         }
+    }
+
+    /// UAT gap-closure #2: a rejected manifest must never collapse back
+    /// into the "can't reach the server" sentence — the two are distinct
+    /// failures with distinct troubleshooting steps.
+    #[test]
+    fn manifest_rejected_is_distinct_from_server_unreachable() {
+        let network = PlayError::Sync(SyncError::Network("x".into())).code();
+        let rejected = PlayError::Sync(SyncError::ManifestRejected("x".into())).code();
+        assert_eq!(network, "server_unreachable");
+        assert_eq!(rejected, "manifest_rejected");
+        assert_ne!(network, rejected);
     }
 
     #[test]
